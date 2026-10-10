@@ -1,0 +1,169 @@
+package com.shanetalkstech.tuxwire.ui
+
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+/**
+ * Text in the app's monospace font. Every piece of text in the app goes
+ * through this, so the terminal look is set in one place.
+ *
+ * @param text what to show.
+ * @param color a theme colour (take it from [LocalTuxwireColors]).
+ * @param modifier optional layout tweaks, such as padding or a click handler.
+ * @param bold whether to use the bold weight.
+ * @param size the font size.
+ */
+@Composable
+fun MonoText(
+    text: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+    bold: Boolean = false,
+    size: TextUnit = 13.sp,
+) {
+    BasicText(
+        text = text,
+        style = TextStyle(
+            color = color,
+            fontFamily = MonoFont,
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+            fontSize = size,
+        ),
+        modifier = modifier,
+    )
+}
+
+/**
+ * A tappable "[ label ]", the terminal way of drawing a button.
+ *
+ * @param label the words inside the brackets.
+ * @param onClick called when tapped (ignored while [enabled] is false).
+ * @param modifier optional layout tweaks.
+ * @param enabled when false the button is drawn dim and does nothing.
+ */
+@Composable
+fun TuiButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val colors = LocalTuxwireColors.current
+    MonoText(
+        text = "[ $label ]",
+        color = if (enabled) colors.accentSelected else colors.textDim,
+        bold = true,
+        size = 14.sp,
+        // `clickable` makes any element respond to taps. The generous vertical
+        // padding makes the tap target big enough for a finger.
+        modifier = modifier
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 10.dp),
+    )
+}
+
+/**
+ * One tappable line in a list (a topic, a feed or an article).
+ *
+ * @param onClick called when the row is tapped.
+ * @param modifier optional layout tweaks.
+ * @param content the row's contents, laid out vertically.
+ */
+@Composable
+fun TuiRow(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+    ) {
+        content()
+    }
+}
+
+/**
+ * A labelled, single-line text box drawn with a plain border.
+ *
+ * @param label small caption shown above the box.
+ * @param value the current text (the screen owns it).
+ * @param onValueChange called with the new text whenever the person types.
+ * @param modifier optional layout tweaks.
+ * @param keyboardType which on-screen keyboard to offer (e.g. the web-address
+ *   keyboard, which has "/" and ".com" keys).
+ */
+@Composable
+fun TuiField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    keyboardType: KeyboardType = KeyboardType.Text,
+) {
+    val colors = LocalTuxwireColors.current
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        MonoText(label, colors.textMuted, size = 12.sp)
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = TextStyle(
+                color = colors.textPrimary,
+                fontFamily = MonoFont,
+                fontSize = 13.sp,
+            ),
+            // The colour of the blinking cursor.
+            cursorBrush = SolidColor(colors.accentSelected),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, colors.textDim)
+                .padding(8.dp),
+        )
+    }
+}
+
+/**
+ * The line at the top of every screen: where you are ("tuxwire / linux"),
+ * with a back button when there is somewhere to go back to.
+ *
+ * @param path the breadcrumb text.
+ * @param onBack called by the back button; `null` hides the button (the first
+ *   screen has nowhere to go back to).
+ */
+@Composable
+fun ScreenHeader(path: String, onBack: (() -> Unit)?) {
+    val colors = LocalTuxwireColors.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (onBack != null) {
+            TuiButton(label = "back", onClick = onBack)
+        }
+        MonoText(path, colors.accentSelected, bold = true)
+    }
+}

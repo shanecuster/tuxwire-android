@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.shanetalkstech.tuxwire.ui.HomeScreen
+import com.shanetalkstech.tuxwire.ui.AppRoot
 
 /**
  * The app's one and only Android "Activity": the screen the launcher opens.
@@ -28,13 +28,13 @@ class MainActivity : ComponentActivity() {
 
         // Draw behind the status bar and the navigation bar so the theme's
         // background colour fills the whole screen, like a terminal would.
-        // (HomeScreen adds padding so text never sits under the bars.)
+        // (AppRoot adds padding so text never sits under the bars.)
         enableEdgeToEdge()
 
         // `setContent` gives Compose the root of the screen. Everything from
         // here down is `@Composable` functions.
         setContent {
-            HomeScreen()
+            AppRoot()
         }
     }
 }

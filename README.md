@@ -4,8 +4,9 @@ A native Android RSS reader that looks and feels like a terminal app: a
 monospace Nerd Font, bordered panels, and the same colour themes and icon sets
 as [tuxwire](https://github.com/shanecuster/tuxwire). No Termux needed.
 
-Status: early development (milestone 1, a walking skeleton that proves the
-Rust bridge, SQLite and networking work on a device).
+Status: early development. Milestone 2 is in: topics, feeds and articles
+with a slide-across drill-down, add and remove feeds, refresh, themes, and
+open-in-browser.
 
 ## How it fits together
 

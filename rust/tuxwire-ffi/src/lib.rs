@@ -14,17 +14,18 @@
 //! val db = Database.open(path)         // calls Database::open
 //! ```
 //!
-//! ## What is exported in this first milestone
+//! ## What is exported
 //!
-//! Three small things, each chosen because it proves a different part of the
-//! toolchain works on a real phone before we build the real screens:
+//! * **Theme palettes** (`list_themes`, `default_theme_name`) -- pure data.
+//! * **The database** (`Database`) -- one object the app opens once. Through it
+//!   the app reads topics, feeds and articles, adds and removes feeds, marks
+//!   articles read, saves settings, and refreshes feeds from the network.
+//! * **A feed preview** (`preview_feed`) -- fetches a feed over HTTPS so the
+//!   "add feed" screen can check an address before saving it.
 //!
-//! 1. **Theme palettes** (`list_themes`) -- pure data, no I/O. Proves the
-//!    Kotlin <-> Rust bridge itself works.
-//! 2. **A database handle** (`Database`) -- opens tuxwire's SQLite database and
-//!    runs its migrations. Proves SQLite compiled for Android.
-//! 3. **A feed preview** (`preview_feed`) -- fetches a feed over HTTPS. Proves
-//!    networking and TLS work on Android.
+//! All the real work (SQLite, fetching, parsing) lives in `tuxwire-core`. The
+//! functions here are thin: lock the database, call core, convert the answer
+//! into the plain records below.
 //!
 //! ## Why mirror types instead of exporting core's types directly?
 //!
@@ -43,9 +44,12 @@ uniffi::setup_scaffolding!();
 // thread at a time to use the value inside it. Both are explained where they
 // are used, in `Database` below.
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
-use tuxwire_core::storage::Storage;
+use tuxwire_core::fetch_report::FetchReport;
+use tuxwire_core::fetchers::{SourceType, configured_sources, fetch_all};
+use tuxwire_core::models::Article;
+use tuxwire_core::storage::{Feed, Scope, Storage};
 use tuxwire_core::theme::{BUILTIN_THEMES, DEFAULT_THEME, Palette, Rgb, picker_order};
 
 // ---------------------------------------------------------------------------
@@ -235,6 +239,106 @@ pub fn core_version() -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Records the app reads
+// ---------------------------------------------------------------------------
+
+/// A topic, as shown on the first screen: a name plus how many feeds it holds
+/// and how many unread articles those feeds have.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TopicInfo {
+    /// The topic's name, e.g. "linux".
+    pub name: String,
+    /// How many feeds are filed under this topic.
+    pub feed_count: u32,
+    /// Unread articles across those feeds.
+    pub unread: u32,
+}
+
+/// A feed, as shown on the second screen.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct FeedInfo {
+    /// Database ID, used to remove the feed.
+    pub id: i64,
+    /// Display name.
+    pub name: String,
+    /// The feed's address; also what identifies its articles.
+    pub url: String,
+    /// The topic it is filed under.
+    pub topic: String,
+    /// How many of its articles are unread.
+    pub unread: u32,
+}
+
+/// An article, as shown in the article list.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ArticleInfo {
+    /// Database ID, used to mark it read.
+    pub id: i64,
+    /// Headline.
+    pub title: String,
+    /// The article's own web address (what "open in browser" opens).
+    pub url: String,
+    /// Name of the feed it came from.
+    pub source: String,
+    /// When it was published, as seconds since 1 January 1970 UTC. A plain
+    /// number crosses the bridge easily; Kotlin turns it into a date.
+    pub published: i64,
+    /// Whether it has been read.
+    pub read: bool,
+    /// Whether it has been saved.
+    pub saved: bool,
+}
+
+/// Converts a stored article into the record the app shows.
+impl From<&Article> for ArticleInfo {
+    /// Copies the fields the list needs. Takes a reference (`&Article`) because
+    /// the caller still owns the article and only we need to read it.
+    fn from(article: &Article) -> ArticleInfo {
+        ArticleInfo {
+            id: article.id,
+            title: article.title.clone(),
+            url: article.url.clone(),
+            source: article.source.clone(),
+            // `timestamp()` gives seconds since 1970 for a chrono date-time.
+            published: article.timestamp.timestamp(),
+            read: article.read,
+            saved: article.saved,
+        }
+    }
+}
+
+/// What one refresh did, so the app can show a one-line result.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct RefreshSummary {
+    /// How many feeds were tried.
+    pub attempted: u32,
+    /// How many of those failed.
+    pub failed: u32,
+    /// How many articles were new (not seen before).
+    pub new_articles: u32,
+    /// True when every feed failed because the network was unreachable, the
+    /// best sign the device is offline.
+    pub offline: bool,
+    /// One line per failed feed ("Name: why"), for showing or logging.
+    pub messages: Vec<String>,
+}
+
+/// Turns core's fetch tally into the record the app shows.
+impl From<&FetchReport> for RefreshSummary {
+    /// Copies the counts across. `as u32` converts from `usize`; the numbers
+    /// are far too small for that to ever overflow.
+    fn from(report: &FetchReport) -> RefreshSummary {
+        RefreshSummary {
+            attempted: report.attempted as u32,
+            failed: report.failed as u32,
+            new_articles: report.new_article_ids.len() as u32,
+            offline: report.is_offline(),
+            messages: report.failure_messages.clone(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Database
 // ---------------------------------------------------------------------------
 
@@ -256,6 +360,50 @@ pub fn core_version() -> String {
 pub struct Database {
     /// The real database handle from tuxwire-core, behind the lock.
     storage: Mutex<Storage>,
+}
+
+/// Helpers used only inside this crate (not exported to Kotlin).
+impl Database {
+    /// Takes the lock and returns a guard giving access to the `Storage`.
+    ///
+    /// The guard unlocks automatically when it goes out of scope, so callers
+    /// simply let it drop at the end of a block. `lock()` returns a `Result`
+    /// because a lock is "poisoned" if a thread panicked while holding it; we
+    /// report that as an error instead of crashing the whole app.
+    fn lock(&self) -> Result<MutexGuard<'_, Storage>, FfiError> {
+        self.storage.lock().map_err(|_| FfiError::Failed {
+            detail: "database lock was poisoned by an earlier panic".to_string(),
+        })
+    }
+
+    /// Fetches the given feeds and stores what comes back.
+    ///
+    /// This is the shared body of `refresh_all` and `refresh_feed`. It is split
+    /// into three steps so the database lock is **not** held during the slow
+    /// network step: holding it would freeze every screen that reads the
+    /// database (and a held lock cannot safely be kept across an `.await`).
+    ///
+    /// 1. (caller) choose which feeds to refresh.
+    /// 2. Download them all, with no lock held.
+    /// 3. Take the lock again and store the results.
+    async fn refresh(&self, feeds: Vec<Feed>) -> Result<RefreshSummary, FfiError> {
+        // Step 2: turn the stored feeds into fetchers, then download them. No
+        // lock is held here, so the app stays responsive and can still read
+        // the database while this waits on the network.
+        let sources = configured_sources(feeds.iter().map(Feed::to_source_config).collect());
+        let outcomes = fetch_all(&sources).await;
+
+        // Step 3: lock once, store every outcome, and tally the results. The
+        // inner block makes the guard drop as soon as storing is done.
+        let mut report = FetchReport::default();
+        {
+            let storage = self.lock()?;
+            for outcome in outcomes {
+                report.record_outcome(&storage, outcome)?;
+            }
+        }
+        Ok(RefreshSummary::from(&report))
+    }
 }
 
 #[uniffi::export]
@@ -286,17 +434,149 @@ impl Database {
 
     /// How many articles are stored. A fresh database says 0.
     pub fn article_count(&self) -> Result<i64, FfiError> {
-        // `lock()` waits for the lock and returns a guard that unlocks
-        // automatically when it goes out of scope at the end of this function.
-        // It returns a `Result` because a lock is "poisoned" if a thread
-        // panicked while holding it; we report that as an error instead of
-        // crashing the whole app.
-        let storage = self.storage.lock().map_err(|_| FfiError::Failed {
-            detail: "database lock was poisoned by an earlier panic".to_string(),
-        })?;
-
-        // Ask core for the count; `?` converts any failure as before.
+        let storage = self.lock()?;
         Ok(storage.article_count()?)
+    }
+
+    /// Every topic that has at least one feed, in alphabetical order, with its
+    /// feed count and unread count. An empty list means no feeds yet.
+    pub fn list_topics(&self) -> Result<Vec<TopicInfo>, FfiError> {
+        let storage = self.lock()?;
+
+        // Step 1: group the feeds by topic. `list_feeds` already returns them
+        // sorted by topic, so feeds of one topic sit next to each other and we
+        // only need to compare each feed with the previous group.
+        // Each group is (topic name, the feed URLs in it).
+        let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+        for feed in storage.list_feeds()? {
+            // `last_mut()` is the most recent group, if any; `Some(group)` is
+            // matched only when it is the same topic as this feed.
+            match groups.last_mut() {
+                Some((name, urls)) if *name == feed.topic => urls.push(feed.url),
+                _ => groups.push((feed.topic, vec![feed.url])),
+            }
+        }
+
+        // Step 2: for each group, ask core how many of its articles are unread.
+        // `Scope::Feeds(urls)` limits the count to articles from those feeds.
+        let mut topics = Vec::with_capacity(groups.len());
+        for (name, urls) in groups {
+            let feed_count = urls.len() as u32;
+            let unread = storage.unread_count(&Scope::Feeds(urls))? as u32;
+            topics.push(TopicInfo {
+                name,
+                feed_count,
+                unread,
+            });
+        }
+        Ok(topics)
+    }
+
+    /// The feeds filed under `topic`, by name, each with its unread count.
+    pub fn list_feeds_in_topic(&self, topic: String) -> Result<Vec<FeedInfo>, FfiError> {
+        let storage = self.lock()?;
+
+        // Walk every feed, keep those in this topic, and attach an unread count.
+        // A loop with `?` is used (rather than `.map(..)`) because counting can
+        // fail, and `?` is the simple way to stop at the first failure.
+        let mut feeds = Vec::new();
+        for feed in storage.list_feeds()? {
+            if feed.topic != topic {
+                continue;
+            }
+            let unread = storage.unread_count(&Scope::Feeds(vec![feed.url.clone()]))? as u32;
+            feeds.push(FeedInfo {
+                id: feed.id,
+                name: feed.name,
+                url: feed.url,
+                topic: feed.topic,
+                unread,
+            });
+        }
+        Ok(feeds)
+    }
+
+    /// Adds an RSS/Atom feed and returns its ID. Fails with a readable message
+    /// if that address is already added.
+    ///
+    /// Names and topics are trimmed of surrounding spaces, and empty ones are
+    /// rejected here so a blank row can never reach the database.
+    pub fn add_feed(&self, name: String, url: String, topic: String) -> Result<i64, FfiError> {
+        // `trim()` returns a view with spaces removed from both ends.
+        let (name, url, topic) = (name.trim(), url.trim(), topic.trim());
+        if name.is_empty() || url.is_empty() || topic.is_empty() {
+            return Err(FfiError::Failed {
+                detail: "a feed needs a name, an address and a topic".to_string(),
+            });
+        }
+        let storage = self.lock()?;
+        Ok(storage.add_feed(name, url, topic, SourceType::Rss)?)
+    }
+
+    /// Removes a feed by ID; returns whether it existed. Its articles are kept.
+    pub fn remove_feed(&self, id: i64) -> Result<bool, FfiError> {
+        let storage = self.lock()?;
+        Ok(storage.remove_feed(id)?)
+    }
+
+    /// The articles from one feed, newest first.
+    pub fn list_articles(&self, feed_url: String) -> Result<Vec<ArticleInfo>, FfiError> {
+        let storage = self.lock()?;
+        // `.iter().map(ArticleInfo::from).collect()`: walk the articles by
+        // reference, convert each with the `From<&Article>` impl above, and
+        // gather the results into a `Vec`.
+        let articles = storage.articles_by_feed(&feed_url)?;
+        Ok(articles.iter().map(ArticleInfo::from).collect())
+    }
+
+    /// Marks an article read.
+    pub fn mark_read(&self, id: i64) -> Result<(), FfiError> {
+        let storage = self.lock()?;
+        Ok(storage.mark_read(id)?)
+    }
+
+    /// Reads a saved setting (for example "theme"), or `None` if never saved.
+    pub fn get_setting(&self, key: String) -> Result<Option<String>, FfiError> {
+        let storage = self.lock()?;
+        Ok(storage.get_setting(&key)?)
+    }
+
+    /// Saves a setting, replacing any earlier value.
+    pub fn set_setting(&self, key: String, value: String) -> Result<(), FfiError> {
+        let storage = self.lock()?;
+        Ok(storage.set_setting(&key, &value)?)
+    }
+}
+
+/// The two network-using methods. They are `async`, so UniFFI turns them into
+/// Kotlin `suspend fun`s (see `preview_feed` below for what that means), and
+/// they live in their own block because `async_runtime = "tokio"` must be
+/// declared for async exports.
+#[uniffi::export(async_runtime = "tokio")]
+impl Database {
+    /// Downloads every feed and stores the new articles.
+    pub async fn refresh_all(&self) -> Result<RefreshSummary, FfiError> {
+        // Read the feed list under the lock, then let go of the lock *before*
+        // refreshing (the inner block drops the guard at its closing brace).
+        let feeds = {
+            let storage = self.lock()?;
+            storage.list_feeds()?
+        };
+        self.refresh(feeds).await
+    }
+
+    /// Downloads just the feed at `feed_url` and stores its new articles.
+    pub async fn refresh_feed(&self, feed_url: String) -> Result<RefreshSummary, FfiError> {
+        // Same as `refresh_all`, keeping only the matching feed.
+        let feeds = {
+            let storage = self.lock()?;
+            storage
+                .list_feeds()?
+                .into_iter()
+                .filter(|feed| feed.url == feed_url)
+                .collect()
+        };
+        self.refresh(feeds).await
     }
 }
 
@@ -458,5 +738,178 @@ mod tests {
     async fn preview_of_an_unreachable_feed_is_an_error() {
         let result = preview_feed("http://127.0.0.1:9/feed.xml".to_string()).await;
         assert!(result.is_err());
+    }
+
+    // -- helpers for the database tests ------------------------------------
+
+    /// Opens a brand-new database in a unique temporary directory. Returns the
+    /// database and the directory so the test can delete it afterwards.
+    fn temp_database() -> (Arc<Database>, std::path::PathBuf) {
+        // Same naming trick as `fresh_database_opens_and_is_empty`: process id
+        // plus a nanosecond timestamp is unique enough, with no extra crate.
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir =
+            std::env::temp_dir().join(format!("tuxwire-ffi-test-{}-{unique}", std::process::id()));
+        let db = Database::open(dir.join("tuxwire.db").to_string_lossy().into_owned()).unwrap();
+        (db, dir)
+    }
+
+    /// Starts a tiny web server on 127.0.0.1 (this computer only; nothing
+    /// leaves the machine) that answers every request with a small RSS feed
+    /// of two articles. Returns the feed's address.
+    ///
+    /// It runs on a plain background thread using only the standard library,
+    /// so the tests need no extra dependency. The thread serves a few
+    /// requests and is cleaned up when the test program exits.
+    fn serve_sample_feed() -> String {
+        use std::io::{Read, Write};
+
+        // Port 0 means "pick any free port"; `local_addr` says which one.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+
+        let body = r#"<?xml version="1.0"?>
+<rss version="2.0"><channel><title>Sample feed</title>
+<item><title>First article</title><link>https://example.com/1</link></item>
+<item><title>Second article</title><link>https://example.com/2</link></item>
+</channel></rss>"#;
+
+        std::thread::spawn(move || {
+            // `.incoming()` yields each connection as it arrives; `take(4)`
+            // stops after four so the thread ends by itself.
+            for stream in listener.incoming().take(4) {
+                let mut stream = stream.unwrap();
+                // Read (and ignore) the request so the client is not cut off.
+                let mut buffer = [0u8; 2048];
+                let _ = stream.read(&mut buffer);
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/rss+xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+
+        format!("http://{address}/feed.xml")
+    }
+
+    // -- database tests ------------------------------------------------------
+
+    /// A fresh database has no topics. Feeds group under their topic with the
+    /// right counts, can be listed per topic, and can be removed. Duplicate and
+    /// blank feeds are rejected with readable messages.
+    #[test]
+    fn feeds_group_into_topics_and_can_be_removed() {
+        let (db, dir) = temp_database();
+        assert!(db.list_topics().unwrap().is_empty());
+
+        db.add_feed("LWN".into(), "https://lwn.net/feed".into(), "linux".into())
+            .unwrap();
+        db.add_feed("Arch".into(), "https://arch/feed".into(), "linux".into())
+            .unwrap();
+        let ars = db
+            .add_feed("Ars".into(), "https://ars/feed".into(), "tech".into())
+            .unwrap();
+
+        // Two topics, alphabetical, with 2 and 1 feeds.
+        let topics = db.list_topics().unwrap();
+        let summary: Vec<(String, u32)> = topics
+            .iter()
+            .map(|t| (t.name.clone(), t.feed_count))
+            .collect();
+        assert_eq!(summary, [("linux".to_string(), 2), ("tech".to_string(), 1)]);
+
+        // Feeds in a topic come back by name.
+        let linux = db.list_feeds_in_topic("linux".into()).unwrap();
+        let names: Vec<&str> = linux.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, ["Arch", "LWN"]);
+
+        // A duplicate address and a blank name are both refused.
+        let duplicate = db.add_feed("Again".into(), "https://ars/feed".into(), "tech".into());
+        assert!(duplicate.unwrap_err().to_string().contains("already added"));
+        assert!(
+            db.add_feed("  ".into(), "https://x/feed".into(), "tech".into())
+                .is_err()
+        );
+
+        // Removing the only "tech" feed removes the topic too.
+        assert!(db.remove_feed(ars).unwrap());
+        assert_eq!(db.list_topics().unwrap().len(), 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A setting is absent until saved, then reads back and can be replaced.
+    #[test]
+    fn settings_can_be_saved_and_replaced() {
+        let (db, dir) = temp_database();
+        assert_eq!(db.get_setting("theme".into()).unwrap(), None);
+        db.set_setting("theme".into(), "Nord".into()).unwrap();
+        db.set_setting("theme".into(), "Dracula".into()).unwrap();
+        assert_eq!(
+            db.get_setting("theme".into()).unwrap().as_deref(),
+            Some("Dracula")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The whole loop against a local feed: refresh stores the articles, they
+    /// show as unread, marking one read lowers the count, and a second refresh
+    /// finds nothing new.
+    ///
+    /// Note: the HTTP client honours the `HTTP_PROXY` family of environment
+    /// variables. If one is set on your machine, also set
+    /// `NO_PROXY=127.0.0.1` when running this test.
+    #[tokio::test]
+    async fn refresh_stores_articles_and_tracks_unread() {
+        let (db, dir) = temp_database();
+        let url = serve_sample_feed();
+        db.add_feed("Sample".into(), url.clone(), "tech".into())
+            .unwrap();
+
+        // First refresh: two new articles, nothing failed.
+        let first = db.refresh_all().await.unwrap();
+        assert_eq!(first.attempted, 1);
+        assert_eq!(first.failed, 0);
+        assert_eq!(first.new_articles, 2);
+
+        // Both are listed and unread; the topic and feed counts agree.
+        let articles = db.list_articles(url.clone()).unwrap();
+        assert_eq!(articles.len(), 2);
+        assert!(articles.iter().all(|a| !a.read));
+        assert_eq!(db.list_topics().unwrap()[0].unread, 2);
+
+        // Reading one lowers the unread count by one.
+        db.mark_read(articles[0].id).unwrap();
+        assert_eq!(db.list_feeds_in_topic("tech".into()).unwrap()[0].unread, 1);
+
+        // Refreshing the same feed again adds nothing new.
+        let second = db.refresh_feed(url).await.unwrap();
+        assert_eq!(second.new_articles, 0);
+        assert_eq!(db.article_count().unwrap(), 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A feed that cannot be reached is reported, not fatal: the summary says
+    /// it failed (and that we look offline), with one message naming the feed.
+    #[tokio::test]
+    async fn refresh_reports_an_unreachable_feed() {
+        let (db, dir) = temp_database();
+        db.add_feed("Dead".into(), "http://127.0.0.1:1/x".into(), "tech".into())
+            .unwrap();
+
+        let summary = db.refresh_all().await.unwrap();
+        assert_eq!(summary.attempted, 1);
+        assert_eq!(summary.failed, 1);
+        assert_eq!(summary.new_articles, 0);
+        assert_eq!(summary.messages.len(), 1);
+        assert!(summary.messages[0].starts_with("Dead: "));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

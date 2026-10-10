@@ -31,9 +31,11 @@ resolver = "3"
 # master can never silently break this app. To move to a newer core, change
 # this hash on purpose, then rebuild and test.
 #
-# This commit is "Merge branch 'feature/core-split'": the first one with the
-# terminal-free `core/` crate.
-tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "4b88519536236974cc2ebb3d0762631ecbdf79dc" }
+# This commit is the tip of tuxwire's `feature/android-feeds` branch: the
+# `feeds` and `settings` tables (migration 006) and the shared
+# `fetch_all` / `record_outcome` refresh step. It only exists on GitHub once
+# that branch has been merged and pushed.
+tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "4a188b1d24775fc310864b916928a0f72973189e" }
 
 # `anyhow` is the catch-all error type tuxwire-core returns from its functions.
 # This crate needs to name that type to convert it into the error Kotlin sees.
