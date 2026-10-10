@@ -31,11 +31,12 @@ resolver = "3"
 # master can never silently break this app. To move to a newer core, change
 # this hash on purpose, then rebuild and test.
 #
-# This commit is the tip of tuxwire's `feature/parallel-refresh` branch: refresh
-# downloads up to six feeds at a time with a 30-second limit each, on top of the
-# OPML reader and writer and article summaries. It only exists on GitHub once
-# that branch has been merged and pushed.
-tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "73caeffc762c36228064737b02ecb7d13422b953" }
+# This commit is the tip of tuxwire's `feature/fetch-user-agent` branch: every
+# feed request now sends a `User-Agent` header (some sites answer a request with
+# none by sending an empty page) and failures name the HTTP status. It sits on
+# top of parallel refresh, OPML and article summaries, and only exists on GitHub
+# once that branch has been merged and pushed.
+tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "78ffb445fd13c867ec0b9aeeb1f2014850059e1b" }
 
 # `anyhow` is the catch-all error type tuxwire-core returns from its functions.
 # This crate needs to name that type to convert it into the error Kotlin sees.
