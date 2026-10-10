@@ -18,9 +18,21 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+/**
+ * Font settings that switch off ligatures.
+ *
+ * JetBrains Mono can merge some character pairs into one fancy symbol (for
+ * example `|>` becomes an arrow and `->` becomes a longer arrow). A terminal
+ * never does that, and it breaks the ASCII-art logo, so every piece of text
+ * in the app turns the feature off. `liga` and `calt` are the two OpenType
+ * features that do the merging; `0` means off.
+ */
+const val NO_LIGATURES: String = "liga 0, calt 0"
 
 /**
  * Text in the app's monospace font. Every piece of text in the app goes
@@ -31,6 +43,8 @@ import androidx.compose.ui.unit.sp
  * @param modifier optional layout tweaks, such as padding or a click handler.
  * @param bold whether to use the bold weight.
  * @param size the font size.
+ * @param centered when true, the text is centred within the width it is
+ *   given (use together with a modifier that fills the width).
  */
 @Composable
 fun MonoText(
@@ -39,6 +53,7 @@ fun MonoText(
     modifier: Modifier = Modifier,
     bold: Boolean = false,
     size: TextUnit = 13.sp,
+    centered: Boolean = false,
 ) {
     BasicText(
         text = text,
@@ -47,6 +62,8 @@ fun MonoText(
             fontFamily = MonoFont,
             fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
             fontSize = size,
+            textAlign = if (centered) TextAlign.Center else TextAlign.Start,
+            fontFeatureSettings = NO_LIGATURES,
         ),
         modifier = modifier,
     )
@@ -133,6 +150,7 @@ fun TuiField(
                 color = colors.textPrimary,
                 fontFamily = MonoFont,
                 fontSize = 13.sp,
+                fontFeatureSettings = NO_LIGATURES,
             ),
             // The colour of the blinking cursor.
             cursorBrush = SolidColor(colors.accentSelected),
