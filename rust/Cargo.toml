@@ -31,11 +31,11 @@ resolver = "3"
 # master can never silently break this app. To move to a newer core, change
 # this hash on purpose, then rebuild and test.
 #
-# This commit is the tip of tuxwire's `feature/opml` branch: the OPML reader and
-# writer (`opml` module), on top of article summaries (migration 007) and the
-# feeds and settings tables (migration 006). It only exists on GitHub once that
-# branch has been merged and pushed.
-tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "ab498ecf6ede65eccf293f96b74e63523f38bd3a" }
+# This commit is the tip of tuxwire's `feature/parallel-refresh` branch: refresh
+# downloads up to six feeds at a time with a 30-second limit each, on top of the
+# OPML reader and writer and article summaries. It only exists on GitHub once
+# that branch has been merged and pushed.
+tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "73caeffc762c36228064737b02ecb7d13422b953" }
 
 # `anyhow` is the catch-all error type tuxwire-core returns from its functions.
 # This crate needs to name that type to convert it into the error Kotlin sees.

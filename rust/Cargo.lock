@@ -1922,11 +1922,12 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 [[package]]
 name = "tuxwire-core"
 version = "0.1.0"
-source = "git+https://github.com/shanecuster/tuxwire?rev=ab498ecf6ede65eccf293f96b74e63523f38bd3a#ab498ecf6ede65eccf293f96b74e63523f38bd3a"
+source = "git+https://github.com/shanecuster/tuxwire?rev=73caeffc762c36228064737b02ecb7d13422b953#73caeffc762c36228064737b02ecb7d13422b953"
 dependencies = [
  "anyhow",
  "chrono",
  "feed-rs",
+ "futures-util",
  "reqwest",
  "rusqlite",
  "serde",
