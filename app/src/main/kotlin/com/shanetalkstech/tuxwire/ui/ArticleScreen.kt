@@ -24,12 +24,15 @@ import uniffi.tuxwire_ffi.Database
  * opens the full article in the browser.
  *
  * The article was already marked read by the list screen before this opened,
- * so nothing here changes the database; it only reads.
+ * so nothing here changes the database; it only reads. The top bar (home
+ * button and breadcrumb) and the bottom bar ("back" and "open in browser")
+ * stay put while the text scrolls.
  *
  * @param db the open database.
  * @param articleId which article to show.
  * @param topic the topic (for the header only).
  * @param feedName the feed's name (for the header only).
+ * @param onHome jumps back to the home screen.
  * @param onBack goes back to the article list.
  */
 @Composable
@@ -38,6 +41,7 @@ fun ArticleScreen(
     articleId: Long,
     topic: String,
     feedName: String,
+    onHome: () -> Unit,
     onBack: () -> Unit,
 ) {
     val colors = LocalTuxwireColors.current
@@ -52,12 +56,31 @@ fun ArticleScreen(
     // Set when the browser could not be opened, so the person is told why.
     var message by remember { mutableStateOf("") }
 
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        ScreenHeader(path = "tuxwire / $topic / $feedName", onBack = onBack)
+    // The article once it has loaded; `null` while loading or after an error.
+    val article = loaded?.getOrNull()
 
+    PinnedLayout(
+        top = { TopBar(path = "tuxwire / $topic / $feedName", onHome = onHome) },
+        bottom = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (message.isNotEmpty()) MonoText(message, colors.accentBreaking)
+                BottomBar {
+                    TuiButton(label = "back", onClick = onBack)
+                    // Dim until the article has loaded, since the address
+                    // comes from it.
+                    TuiButton(
+                        label = "open in browser",
+                        enabled = article != null,
+                        onClick = {
+                            if (article != null && !openInBrowser(context, article.url)) {
+                                message = "could not open this address"
+                            }
+                        },
+                    )
+                }
+            }
+        },
+    ) {
         val result = loaded
         when {
             result == null -> MonoText("loading...", colors.textMuted)
@@ -66,37 +89,25 @@ fun ArticleScreen(
                 colors.accentBreaking,
             )
             else -> {
-                val article = result.getOrThrow()
+                val shown = result.getOrThrow()
 
-                // The button sits above the text so it is always reachable,
-                // however long the summary is.
-                TuiButton(
-                    label = "open in browser",
-                    onClick = {
-                        if (!openInBrowser(context, article.url)) {
-                            message = "could not open this address"
-                        }
-                    },
-                )
-                if (message.isNotEmpty()) MonoText(message, colors.accentBreaking)
-
-                // Everything below scrolls together, so a long summary can
-                // be read on a small screen.
+                // Everything here scrolls together, so a long summary can be
+                // read on a small screen while the bars stay in place.
                 Column(
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxSize()
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    MonoText(article.title, colors.textPrimary, bold = true, size = 16.sp)
+                    MonoText(shown.title, colors.textPrimary, bold = true, size = 16.sp)
                     MonoText(
-                        text = "${article.source}  " + formatPublished(article.published),
+                        text = "${shown.source}  " + formatPublished(shown.published),
                         color = colors.textMuted,
                     )
                     // `summary` is null when the feed sent none. The list only
                     // opens this screen when there is one, so null is rare
                     // (for example if the row changed meanwhile).
-                    MonoText(article.summary ?: "", colors.textPrimary)
+                    MonoText(shown.summary ?: "", colors.textPrimary)
                 }
             }
         }

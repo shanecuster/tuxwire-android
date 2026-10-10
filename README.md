@@ -8,7 +8,9 @@ Status: early development. Milestone 2 is in: a home screen listing every feed
 (tap a feed's topic to see just that topic), then articles, with a
 slide-across drill-down, add and remove feeds, refresh, themes, and
 open-in-browser. Tapping an article opens a plain-text summary first (articles
-with no summary open straight in the browser).
+with no summary open straight in the browser). Screens have a pinned top bar
+and bottom bar so the app can be used one-handed, and the logo changes
+colour each time you return to the home screen.
 
 ## How it fits together
 

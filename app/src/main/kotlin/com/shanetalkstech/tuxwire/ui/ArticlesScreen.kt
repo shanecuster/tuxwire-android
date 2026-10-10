@@ -2,7 +2,6 @@ package com.shanetalkstech.tuxwire.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,10 +27,14 @@ import uniffi.tuxwire_ffi.Database
  * skips that screen and opens straight in the browser. "refresh" downloads
  * just this feed.
  *
+ * The top bar (home button and breadcrumb) and the bottom bar ("back" and
+ * "refresh") stay put; only the list between them scrolls.
+ *
  * @param db the open database.
  * @param topic the feed's topic (for the header only).
  * @param feedName the feed's name (for the header only).
  * @param feedUrl the feed's address, which identifies its articles.
+ * @param onHome jumps back to the home screen.
  * @param onBack goes back to the feed list.
  * @param onOpenArticle opens the summary screen for the article with this ID.
  */
@@ -41,6 +44,7 @@ fun ArticlesScreen(
     topic: String,
     feedName: String,
     feedUrl: String,
+    onHome: () -> Unit,
     onBack: () -> Unit,
     onOpenArticle: (Long) -> Unit,
 ) {
@@ -61,37 +65,37 @@ fun ArticlesScreen(
     var message by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    PinnedLayout(
+        top = { TopBar(path = "tuxwire / $topic / $feedName", onHome = onHome) },
+        bottom = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (message.isNotEmpty()) MonoText(message, colors.textMuted)
+                BottomBar {
+                    TuiButton(label = "back", onClick = onBack)
+                    TuiButton(
+                        label = if (busy) "refreshing..." else "refresh",
+                        enabled = !busy,
+                        onClick = {
+                            busy = true
+                            message = ""
+                            scope.launch {
+                                try {
+                                    message = db.refreshFeed(feedUrl).describe()
+                                    version++
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (t: Throwable) {
+                                    message = "error: ${t.explain()}"
+                                } finally {
+                                    busy = false
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+        },
     ) {
-        ScreenHeader(path = "tuxwire / $topic / $feedName", onBack = onBack)
-
-        // Refresh button and its result line.
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            TuiButton(
-                label = if (busy) "refreshing..." else "refresh",
-                enabled = !busy,
-                onClick = {
-                    busy = true
-                    message = ""
-                    scope.launch {
-                        try {
-                            message = db.refreshFeed(feedUrl).describe()
-                            version++
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (t: Throwable) {
-                            message = "error: ${t.explain()}"
-                        } finally {
-                            busy = false
-                        }
-                    }
-                },
-            )
-        }
-        if (message.isNotEmpty()) MonoText(message, colors.textMuted)
-
         val loaded = articles
         when {
             loaded == null -> MonoText("loading...", colors.textMuted)
@@ -105,7 +109,7 @@ fun ArticlesScreen(
             )
             // `LazyColumn` only builds the rows that are on screen, so a feed
             // with hundreds of articles stays fast.
-            else -> LazyColumn(modifier = Modifier.weight(1f)) {
+            else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(loaded.getOrThrow(), key = { it.id }) { article ->
                     val isRead = article.read || article.id in readNow
                     TuiRow(

@@ -93,8 +93,29 @@ fun AppRoot() {
     var stack by rememberSaveable(stateSaver = Screen.StackSaver) {
         mutableStateOf(listOf<Screen>(Screen.Home))
     }
+    // Counts how many times the person has come back to the home screen. The
+    // logo colour is picked from this number, so it changes on every return.
+    var homeVisits by rememberSaveable { mutableStateOf(0) }
     val push: (Screen) -> Unit = { stack = stack + it }
-    val pop: () -> Unit = { if (stack.size > 1) stack = stack.dropLast(1) }
+    val pop: () -> Unit = {
+        if (stack.size > 1) {
+            stack = stack.dropLast(1)
+            // Arriving back on the home screen counts as a visit.
+            if (stack.last() == Screen.Home) homeVisits++
+        }
+    }
+    // Throws away the whole back stack and shows the home screen.
+    val goHome: () -> Unit = {
+        if (stack.size > 1) {
+            stack = listOf(Screen.Home)
+            homeVisits++
+        }
+    }
+
+    // The logo's colour: one of the current theme's accent colours, moving to
+    // the next one on every return to home. `%` wraps back to the first.
+    val logoColors = bannerColors(colors)
+    val logoColor = logoColors[homeVisits % logoColors.size]
 
     // The phone's back button/gesture goes back one screen, but only while
     // there is a screen to go back to (otherwise it leaves the app as usual).
@@ -151,7 +172,9 @@ fun AppRoot() {
                             topic = null,
                             themeName = themeName ?: "",
                             onCycleTheme = cycleTheme,
-                            onBack = null,
+                            bannerColor = logoColor,
+                            onHome = goHome,
+                            onBack = pop,
                             onOpenFeed = { push(Screen.Articles(it.topic, it.name, it.url)) },
                             onOpenTopic = { push(Screen.Feeds(it)) },
                             onAddFeed = { push(Screen.AddFeed("")) },
@@ -162,6 +185,8 @@ fun AppRoot() {
                             topic = screen.topic,
                             themeName = "",
                             onCycleTheme = {},
+                            bannerColor = logoColor,
+                            onHome = goHome,
                             onBack = pop,
                             onOpenFeed = { push(Screen.Articles(screen.topic, it.name, it.url)) },
                             onOpenTopic = {},
@@ -172,6 +197,7 @@ fun AppRoot() {
                             topic = screen.topic,
                             feedName = screen.feedName,
                             feedUrl = screen.feedUrl,
+                            onHome = goHome,
                             onBack = pop,
                             onOpenArticle = {
                                 push(
@@ -189,6 +215,7 @@ fun AppRoot() {
                             articleId = screen.articleId,
                             topic = screen.topic,
                             feedName = screen.feedName,
+                            onHome = goHome,
                             onBack = pop,
                         )
                         is Screen.AddFeed -> AddFeedScreen(
