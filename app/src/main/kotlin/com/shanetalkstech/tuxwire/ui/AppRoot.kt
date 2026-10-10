@@ -91,7 +91,7 @@ fun AppRoot() {
 
     // --- Navigation -------------------------------------------------------
     var stack by rememberSaveable(stateSaver = Screen.StackSaver) {
-        mutableStateOf(listOf<Screen>(Screen.Topics))
+        mutableStateOf(listOf<Screen>(Screen.Home))
     }
     val push: (Screen) -> Unit = { stack = stack + it }
     val pop: () -> Unit = { if (stack.size > 1) stack = stack.dropLast(1) }
@@ -144,18 +144,27 @@ fun AppRoot() {
                 ) { screen ->
                     // `when` over a sealed class must cover every screen.
                     when (screen) {
-                        Screen.Topics -> TopicsScreen(
+                        // Home: every feed. A feed opens its articles; a topic
+                        // label opens that topic's feeds.
+                        Screen.Home -> FeedsScreen(
                             db = db,
+                            topic = null,
                             themeName = themeName ?: "",
                             onCycleTheme = cycleTheme,
+                            onBack = null,
+                            onOpenFeed = { push(Screen.Articles(it.topic, it.name, it.url)) },
                             onOpenTopic = { push(Screen.Feeds(it)) },
                             onAddFeed = { push(Screen.AddFeed("")) },
                         )
+                        // One topic's feeds.
                         is Screen.Feeds -> FeedsScreen(
                             db = db,
                             topic = screen.topic,
+                            themeName = "",
+                            onCycleTheme = {},
                             onBack = pop,
                             onOpenFeed = { push(Screen.Articles(screen.topic, it.name, it.url)) },
+                            onOpenTopic = {},
                             onAddFeed = { push(Screen.AddFeed(screen.topic)) },
                         )
                         is Screen.Articles -> ArticlesScreen(
