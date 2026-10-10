@@ -1,0 +1,65 @@
+# Workspace manifest for the Rust half of tuxwire-android.
+#
+# The Android app is written in Kotlin, but the real work -- fetching feeds,
+# parsing them, the SQLite database, the theme palettes -- is done by
+# `tuxwire-core`, the same Rust library the terminal version of tuxwire uses.
+# This workspace builds the thin "glue" that lets Kotlin call that library:
+#
+#   tuxwire-ffi     the glue library (becomes libtuxwire_ffi.so on the phone)
+#   uniffi-bindgen  a tiny helper program that reads the glue library and
+#                   writes the matching Kotlin source file
+#
+# A *workspace* is a set of Rust crates (packages) built together. They share
+# one Cargo.lock (so every build uses the exact same dependency versions) and
+# one `target/` output directory.
+[workspace]
+members = ["tuxwire-ffi", "uniffi-bindgen"]
+
+# Resolver "3" is the dependency-resolution algorithm that goes with Rust
+# edition 2024. A workspace root has no edition of its own to infer it from,
+# so it is stated explicitly.
+resolver = "3"
+
+# Versions are declared once here and the member crates say
+# `name.workspace = true`, so the two crates can never disagree.
+[workspace.dependencies]
+# The shared engine, taken straight from the tuxwire repository on GitHub.
+#
+# `rev` pins ONE exact commit instead of "whatever is newest". That matters
+# for two reasons: (1) builds are reproducible -- the same source always
+# produces the same app, which F-Droid requires; (2) a change to tuxwire's
+# master can never silently break this app. To move to a newer core, change
+# this hash on purpose, then rebuild and test.
+#
+# This commit is "Merge branch 'feature/core-split'": the first one with the
+# terminal-free `core/` crate.
+tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "4b88519536236974cc2ebb3d0762631ecbdf79dc" }
+
+# `anyhow` is the catch-all error type tuxwire-core returns from its functions.
+# This crate needs to name that type to convert it into the error Kotlin sees.
+# The same major version as tuxwire-core uses, so Cargo links one copy.
+anyhow = "1.0.104"
+
+# UniFFI: Mozilla's tool that generates the Kotlin <-> Rust bridge code so we
+# never have to write JNI (Java's low-level native interface) by hand.
+uniffi = "0.32.2"
+
+# `tokio` is the async runtime. It is only used by this crate's tests (to run
+# an `async` test), so it is a dev-dependency below, never part of the shipped
+# library's own code. The "rt" and "macros" features are just what `#[tokio::test]`
+# needs.
+tokio = { version = "1.53.1", features = ["rt", "macros"] }
+
+# Settings for optimized ("release") builds, which is what ships on a phone.
+[profile.release]
+# "s" asks the compiler to optimize for small size rather than raw speed.
+# Phones care about APK size, and fetching feeds is waiting on the network,
+# not on the CPU, so the speed difference is not noticeable.
+opt-level = "s"
+# Link-time optimization lets the compiler remove unused code across crates,
+# shrinking the final .so a lot. "thin" is a good size/compile-time balance.
+lto = "thin"
+# One code-generation unit per crate: slower to compile, slightly smaller.
+codegen-units = 1
+# Remove debug symbols from the shipped library.
+strip = true
