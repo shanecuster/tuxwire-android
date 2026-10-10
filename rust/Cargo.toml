@@ -31,12 +31,11 @@ resolver = "3"
 # master can never silently break this app. To move to a newer core, change
 # this hash on purpose, then rebuild and test.
 #
-# This commit is the tip of tuxwire's `feature/article-summary` branch: article
-# summaries (migration 007, `Storage::article_by_id`, and the `text` module that
-# turns feed HTML into plain text), on top of the feeds and settings tables
-# (migration 006) and the shared refresh step. It only exists on GitHub once
-# that branch has been merged and pushed.
-tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "a371f3b463f80997e33b78bf1ffbf0bddc906ce8" }
+# This commit is the tip of tuxwire's `feature/opml` branch: the OPML reader and
+# writer (`opml` module), on top of article summaries (migration 007) and the
+# feeds and settings tables (migration 006). It only exists on GitHub once that
+# branch has been merged and pushed.
+tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "ab498ecf6ede65eccf293f96b74e63523f38bd3a" }
 
 # `anyhow` is the catch-all error type tuxwire-core returns from its functions.
 # This crate needs to name that type to convert it into the error Kotlin sees.
