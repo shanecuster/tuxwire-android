@@ -311,6 +311,35 @@ pub struct ArticleDetail {
     pub summary: Option<String>,
 }
 
+/// Builds the app's feed records, each with its unread count.
+///
+/// `only_topic` of `Some(name)` keeps just the feeds filed under that topic;
+/// `None` keeps every feed. Shared by [`Database::list_all_feeds`] and
+/// [`Database::list_feeds_in_topic`] so the two cannot drift apart.
+fn feed_infos(storage: &Storage, only_topic: Option<&str>) -> Result<Vec<FeedInfo>, FfiError> {
+    // A loop with `?` is used (rather than `.map(..)`) because counting can
+    // fail, and `?` is the simple way to stop at the first failure.
+    let mut feeds = Vec::new();
+    for feed in storage.list_feeds()? {
+        // `if let Some(..) && ..` runs only when a topic filter was given
+        // and this feed is filed somewhere else; such feeds are skipped.
+        if let Some(topic) = only_topic
+            && feed.topic != topic
+        {
+            continue;
+        }
+        let unread = storage.unread_count(&Scope::Feeds(vec![feed.url.clone()]))? as u32;
+        feeds.push(FeedInfo {
+            id: feed.id,
+            name: feed.name,
+            url: feed.url,
+            topic: feed.topic,
+            unread,
+        });
+    }
+    Ok(feeds)
+}
+
 /// Converts a stored article into the record the app shows.
 impl From<&Article> for ArticleInfo {
     /// Copies the fields the list needs. Takes a reference (`&Article`) because
@@ -510,28 +539,21 @@ impl Database {
         Ok(topics)
     }
 
+    /// Every feed, alphabetical by name (ignoring upper/lower case), each with
+    /// its topic and unread count. This is what the app's first screen shows.
+    pub fn list_all_feeds(&self) -> Result<Vec<FeedInfo>, FfiError> {
+        let storage = self.lock()?;
+        let mut feeds = feed_infos(&storage, None)?;
+        // `sort_by_key` orders the list by the value the closure returns.
+        // Lower-casing makes "arch" and "Arch" sort together.
+        feeds.sort_by_key(|feed| feed.name.to_lowercase());
+        Ok(feeds)
+    }
+
     /// The feeds filed under `topic`, by name, each with its unread count.
     pub fn list_feeds_in_topic(&self, topic: String) -> Result<Vec<FeedInfo>, FfiError> {
         let storage = self.lock()?;
-
-        // Walk every feed, keep those in this topic, and attach an unread count.
-        // A loop with `?` is used (rather than `.map(..)`) because counting can
-        // fail, and `?` is the simple way to stop at the first failure.
-        let mut feeds = Vec::new();
-        for feed in storage.list_feeds()? {
-            if feed.topic != topic {
-                continue;
-            }
-            let unread = storage.unread_count(&Scope::Feeds(vec![feed.url.clone()]))? as u32;
-            feeds.push(FeedInfo {
-                id: feed.id,
-                name: feed.name,
-                url: feed.url,
-                topic: feed.topic,
-                unread,
-            });
-        }
-        Ok(feeds)
+        feed_infos(&storage, Some(&topic))
     }
 
     /// Adds an RSS/Atom feed and returns its ID. Fails with a readable message
@@ -874,6 +896,15 @@ mod tests {
             .map(|t| (t.name.clone(), t.feed_count))
             .collect();
         assert_eq!(summary, [("linux".to_string(), 2), ("tech".to_string(), 1)]);
+
+        // Every feed, alphabetical by name regardless of topic or case.
+        let all: Vec<String> = db
+            .list_all_feeds()
+            .unwrap()
+            .into_iter()
+            .map(|f| f.name)
+            .collect();
+        assert_eq!(all, ["Arch", "Ars", "LWN"]);
 
         // Feeds in a topic come back by name.
         let linux = db.list_feeds_in_topic("linux".into()).unwrap();
