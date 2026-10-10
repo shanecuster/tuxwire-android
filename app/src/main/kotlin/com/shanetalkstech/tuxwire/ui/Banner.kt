@@ -11,18 +11,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * The word "tuxwire" drawn with half-block characters, three rows tall.
+ * The word "tuxwire" drawn in the classic "figlet standard" lettering, five
+ * rows tall and 37 columns wide.
  *
- * Each letter is 3 columns wide. `▀` fills the top half of a character cell,
- * `▄` the bottom half and `█` the whole cell, so three rows of text give a
- * compact logo (the same style as the zerohour banner). It is the app's
- * name, so it is kept here as a fixed picture rather than looked up in the
- * icon table.
+ * It was made once with the `figlet` program and pasted in as a fixed
+ * picture, so nothing generates it at run time. It uses plain ASCII only, so
+ * it looks the same in every font. Each row is padded with spaces to the
+ * same width so the rows line up when stacked. The strings are written as
+ * raw strings (`"""..."""`) so the many backslashes need no escaping.
  */
 private val TUXWIRE_BANNER: List<String> = listOf(
-    "▀█▀ █ █ █ █ █ █  ▄  █▀█ █▀▀",
-    " █  █ █ ▄▀▄ █▄█  █  █▀▄ █▀▀",
-    " ▀  ▀▀▀ ▀ ▀ ▀▀▀ ▀▀▀ ▀ ▀ ▀▀▀",
+    """ _                        _          """,
+    """| |_ _   ___  ____      _(_)_ __ ___ """,
+    """| __| | | \ \/ /\ \ /\ / / | '__/ _ \""",
+    """| |_| |_| |>  <  \ V  V /| | | |  __/""",
+    """ \__|\__,_/_/\_\  \_/\_/ |_|_|  \___|""",
 )
 
 /**
@@ -52,8 +55,9 @@ fun Banner(color: Color) {
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // The three rows are joined into one multi-line text so they stack
-        // with no gap between them, which keeps the blocks joined up.
-        MonoText(text = TUXWIRE_BANNER.joinToString("\n"), color = color, size = 20.sp)
+        // The rows are joined into one multi-line text so they stack with no
+        // gap between them. 13sp makes the 37 columns about 290dp wide, which
+        // fits a 360dp-wide phone with room for the side margins.
+        MonoText(text = TUXWIRE_BANNER.joinToString("\n"), color = color, size = 13.sp)
     }
 }
