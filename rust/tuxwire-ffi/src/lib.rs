@@ -287,6 +287,28 @@ pub struct ArticleInfo {
     pub read: bool,
     /// Whether it has been saved.
     pub saved: bool,
+    /// Whether the article has a summary to show. The app uses this to decide
+    /// what a tap does: open the summary screen if there is one, otherwise go
+    /// straight to the browser. (The summary text itself is fetched only when
+    /// the summary screen opens, so long lists stay light.)
+    pub has_summary: bool,
+}
+
+/// One article in full, for the summary screen.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ArticleDetail {
+    /// Database ID.
+    pub id: i64,
+    /// Headline.
+    pub title: String,
+    /// The article's own web address (what "open in browser" opens).
+    pub url: String,
+    /// Name of the feed it came from.
+    pub source: String,
+    /// When it was published, as seconds since 1 January 1970 UTC.
+    pub published: i64,
+    /// The plain-text summary, or `None` if the feed sent none.
+    pub summary: Option<String>,
 }
 
 /// Converts a stored article into the record the app shows.
@@ -303,6 +325,22 @@ impl From<&Article> for ArticleInfo {
             published: article.timestamp.timestamp(),
             read: article.read,
             saved: article.saved,
+            has_summary: article.summary.is_some(),
+        }
+    }
+}
+
+/// Converts a stored article into the full record for the summary screen.
+impl From<&Article> for ArticleDetail {
+    /// Copies the fields the summary screen shows.
+    fn from(article: &Article) -> ArticleDetail {
+        ArticleDetail {
+            id: article.id,
+            title: article.title.clone(),
+            url: article.url.clone(),
+            source: article.source.clone(),
+            published: article.timestamp.timestamp(),
+            summary: article.summary.clone(),
         }
     }
 }
@@ -527,6 +565,20 @@ impl Database {
         // gather the results into a `Vec`.
         let articles = storage.articles_by_feed(&feed_url)?;
         Ok(articles.iter().map(ArticleInfo::from).collect())
+    }
+
+    /// One article in full (including its summary), for the summary screen.
+    /// Fails with a readable message if no article has this ID.
+    pub fn article_detail(&self, id: i64) -> Result<ArticleDetail, FfiError> {
+        let storage = self.lock()?;
+        // `article_by_id` returns `Option<Article>`: `Some` if found. Turning a
+        // missing article into an error here keeps the Kotlin side simple.
+        match storage.article_by_id(id)? {
+            Some(article) => Ok(ArticleDetail::from(&article)),
+            None => Err(FfiError::Failed {
+                detail: "that article no longer exists".to_string(),
+            }),
+        }
     }
 
     /// Marks an article read.
@@ -773,7 +825,7 @@ mod tests {
 
         let body = r#"<?xml version="1.0"?>
 <rss version="2.0"><channel><title>Sample feed</title>
-<item><title>First article</title><link>https://example.com/1</link></item>
+<item><title>First article</title><link>https://example.com/1</link><description><![CDATA[<p>First &amp; best. A second sentence.</p>]]></description></item>
 <item><title>Second article</title><link>https://example.com/2</link></item>
 </channel></rss>"#;
 
@@ -891,6 +943,45 @@ mod tests {
         let second = db.refresh_feed(url).await.unwrap();
         assert_eq!(second.new_articles, 0);
         assert_eq!(db.article_count().unwrap(), 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Summaries survive the whole trip: the feed's HTML description is stored
+    /// as plain text, the list only says whether one exists, and the detail
+    /// call returns the text. An article whose feed sent none has no summary.
+    #[tokio::test]
+    async fn summaries_are_stored_and_returned_as_plain_text() {
+        let (db, dir) = temp_database();
+        let url = serve_sample_feed();
+        db.add_feed("Sample".into(), url.clone(), "tech".into())
+            .unwrap();
+        db.refresh_all().await.unwrap();
+
+        // The list says which articles have a summary (first yes, second no).
+        let articles = db.list_articles(url).unwrap();
+        let first = articles
+            .iter()
+            .find(|a| a.title == "First article")
+            .unwrap();
+        let second = articles
+            .iter()
+            .find(|a| a.title == "Second article")
+            .unwrap();
+        assert!(first.has_summary);
+        assert!(!second.has_summary);
+
+        // The detail has the HTML removed and the entity decoded.
+        let detail = db.article_detail(first.id).unwrap();
+        assert_eq!(detail.title, "First article");
+        assert_eq!(
+            detail.summary.as_deref(),
+            Some("First & best. A second sentence.")
+        );
+        assert_eq!(db.article_detail(second.id).unwrap().summary, None);
+
+        // An unknown ID is a readable error, not a crash.
+        assert!(db.article_detail(99999).is_err());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

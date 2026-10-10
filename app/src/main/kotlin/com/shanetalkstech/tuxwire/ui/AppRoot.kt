@@ -164,6 +164,23 @@ fun AppRoot() {
                             feedName = screen.feedName,
                             feedUrl = screen.feedUrl,
                             onBack = pop,
+                            onOpenArticle = {
+                                push(
+                                    Screen.Article(
+                                        screen.topic,
+                                        screen.feedName,
+                                        screen.feedUrl,
+                                        it,
+                                    ),
+                                )
+                            },
+                        )
+                        is Screen.Article -> ArticleScreen(
+                            db = db,
+                            articleId = screen.articleId,
+                            topic = screen.topic,
+                            feedName = screen.feedName,
+                            onBack = pop,
                         )
                         is Screen.AddFeed -> AddFeedScreen(
                             db = db,

@@ -10,7 +10,9 @@ import androidx.compose.runtime.saveable.Saver
  * without handling it is a compile error, not a runtime surprise).
  *
  * The drill-down is Topics, then Feeds (one topic's feeds), then Articles (one
- * feed's articles). [AddFeed] opens on top of either of the first two.
+ * feed's articles), then Article (one article's summary). [AddFeed] opens on
+ * top of either of the first two, so it never sits beside [Article] in the
+ * stack and the two can share a depth.
  *
  * @property depth how far "to the right" this screen sits. Used to slide
  *   forward (towards a bigger depth) or backward when switching screens.
@@ -26,6 +28,14 @@ sealed class Screen(val depth: Int) {
     /** The articles of one feed, with the names needed for the header. */
     data class Articles(val topic: String, val feedName: String, val feedUrl: String) : Screen(2)
 
+    /** One article's summary, with the names needed for the header. */
+    data class Article(
+        val topic: String,
+        val feedName: String,
+        val feedUrl: String,
+        val articleId: Long,
+    ) : Screen(3)
+
     /** The add-feed form. [topic] pre-fills the topic box (empty for none). */
     data class AddFeed(val topic: String) : Screen(3)
 
@@ -37,6 +47,8 @@ sealed class Screen(val depth: Int) {
         Topics -> "T"
         is Feeds -> listOf("F", topic).joinToString(SEPARATOR)
         is Articles -> listOf("A", topic, feedName, feedUrl).joinToString(SEPARATOR)
+        is Article -> listOf("R", topic, feedName, feedUrl, articleId.toString())
+            .joinToString(SEPARATOR)
         is AddFeed -> listOf("N", topic).joinToString(SEPARATOR)
     }
 
@@ -60,6 +72,14 @@ sealed class Screen(val depth: Int) {
                     parts.getOrElse(1) { "" },
                     parts.getOrElse(2) { "" },
                     parts.getOrElse(3) { "" },
+                )
+                "R" -> Article(
+                    parts.getOrElse(1) { "" },
+                    parts.getOrElse(2) { "" },
+                    parts.getOrElse(3) { "" },
+                    // A damaged ID becomes 0, which finds no article and
+                    // shows an error message instead of crashing.
+                    parts.getOrElse(4) { "" }.toLongOrNull() ?: 0L,
                 )
                 "N" -> AddFeed(parts.getOrElse(1) { "" })
                 else -> Topics
