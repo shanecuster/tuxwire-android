@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,6 +32,8 @@ import androidx.compose.ui.unit.sp
  * @param modifier optional layout tweaks, such as padding or a click handler.
  * @param bold whether to use the bold weight.
  * @param size the font size.
+ * @param centered when true, the text is centred within the width it is
+ *   given (use together with a modifier that fills the width).
  */
 @Composable
 fun MonoText(
@@ -39,6 +42,7 @@ fun MonoText(
     modifier: Modifier = Modifier,
     bold: Boolean = false,
     size: TextUnit = 13.sp,
+    centered: Boolean = false,
 ) {
     BasicText(
         text = text,
@@ -47,6 +51,7 @@ fun MonoText(
             fontFamily = MonoFont,
             fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
             fontSize = size,
+            textAlign = if (centered) TextAlign.Center else TextAlign.Start,
         ),
         modifier = modifier,
     )
