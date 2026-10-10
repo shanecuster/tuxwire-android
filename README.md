@@ -6,7 +6,8 @@ as [tuxwire](https://github.com/shanecuster/tuxwire). No Termux needed.
 
 Status: early development. Milestone 2 is in: topics, feeds and articles
 with a slide-across drill-down, add and remove feeds, refresh, themes, and
-open-in-browser.
+open-in-browser. Tapping an article opens a plain-text summary first (articles
+with no summary open straight in the browser).
 
 ## How it fits together
 

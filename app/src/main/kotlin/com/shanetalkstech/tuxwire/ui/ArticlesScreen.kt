@@ -24,14 +24,16 @@ import uniffi.tuxwire_ffi.Database
 
 /**
  * The third screen: one feed's articles, newest first. Tapping an article
- * marks it read and opens it in the browser. "refresh" downloads just this
- * feed.
+ * marks it read, then opens its summary screen; an article with no summary
+ * skips that screen and opens straight in the browser. "refresh" downloads
+ * just this feed.
  *
  * @param db the open database.
  * @param topic the feed's topic (for the header only).
  * @param feedName the feed's name (for the header only).
  * @param feedUrl the feed's address, which identifies its articles.
  * @param onBack goes back to the feed list.
+ * @param onOpenArticle opens the summary screen for the article with this ID.
  */
 @Composable
 fun ArticlesScreen(
@@ -40,6 +42,7 @@ fun ArticlesScreen(
     feedName: String,
     feedUrl: String,
     onBack: () -> Unit,
+    onOpenArticle: (Long) -> Unit,
 ) {
     val colors = LocalTuxwireColors.current
     val context = LocalContext.current
@@ -107,12 +110,17 @@ fun ArticlesScreen(
                     val isRead = article.read || article.id in readNow
                     TuiRow(
                         onClick = {
-                            // Show it as read straight away, save that in the
-                            // background, and open the article.
+                            // Show it as read straight away, then save that
+                            // in the background. The save finishes before we
+                            // move on so the list is right when we come back.
                             readNow = readNow + article.id
-                            scope.launch { runCatching { onIo { db.markRead(article.id) } } }
-                            if (!openInBrowser(context, article.url)) {
-                                message = "could not open this address"
+                            scope.launch {
+                                runCatching { onIo { db.markRead(article.id) } }
+                                if (article.hasSummary) {
+                                    onOpenArticle(article.id)
+                                } else if (!openInBrowser(context, article.url)) {
+                                    message = "could not open this address"
+                                }
                             }
                         },
                     ) {
