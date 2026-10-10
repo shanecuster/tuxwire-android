@@ -24,6 +24,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
+ * Font settings that switch off ligatures.
+ *
+ * JetBrains Mono can merge some character pairs into one fancy symbol (for
+ * example `|>` becomes an arrow and `->` becomes a longer arrow). A terminal
+ * never does that, and it breaks the ASCII-art logo, so every piece of text
+ * in the app turns the feature off. `liga` and `calt` are the two OpenType
+ * features that do the merging; `0` means off.
+ */
+const val NO_LIGATURES: String = "liga 0, calt 0"
+
+/**
  * Text in the app's monospace font. Every piece of text in the app goes
  * through this, so the terminal look is set in one place.
  *
@@ -52,6 +63,7 @@ fun MonoText(
             fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
             fontSize = size,
             textAlign = if (centered) TextAlign.Center else TextAlign.Start,
+            fontFeatureSettings = NO_LIGATURES,
         ),
         modifier = modifier,
     )
@@ -138,6 +150,7 @@ fun TuiField(
                 color = colors.textPrimary,
                 fontFamily = MonoFont,
                 fontSize = 13.sp,
+                fontFeatureSettings = NO_LIGATURES,
             ),
             // The colour of the blinking cursor.
             cursorBrush = SolidColor(colors.accentSelected),
