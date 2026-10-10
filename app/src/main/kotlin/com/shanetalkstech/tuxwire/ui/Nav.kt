@@ -9,18 +9,19 @@ import androidx.compose.runtime.saveable.Saver
  * so a `when` over a [Screen] must handle each one (adding a screen later
  * without handling it is a compile error, not a runtime surprise).
  *
- * The drill-down is Topics, then Feeds (one topic's feeds), then Articles (one
- * feed's articles), then Article (one article's summary). [AddFeed] opens on
- * top of either of the first two, so it never sits beside [Article] in the
- * stack and the two can share a depth.
+ * The drill-down is Home (every feed), then optionally Feeds (one topic's
+ * feeds, reached by tapping a topic label), then Articles (one feed's
+ * articles), then Article (one article's summary). [AddFeed] opens on top of
+ * either of the first two, so it never sits beside [Article] in the stack and
+ * the two can share a depth.
  *
  * @property depth how far "to the right" this screen sits. Used to slide
  *   forward (towards a bigger depth) or backward when switching screens.
  */
 sealed class Screen(val depth: Int) {
 
-    /** The first screen: every topic. */
-    data object Topics : Screen(0)
+    /** The first screen: every feed, alphabetically. */
+    data object Home : Screen(0)
 
     /** The feeds filed under [topic]. */
     data class Feeds(val topic: String) : Screen(1)
@@ -44,7 +45,7 @@ sealed class Screen(val depth: Int) {
      * a screen rotation). A kind letter, then each field, joined by [SEPARATOR].
      */
     fun encode(): String = when (this) {
-        Topics -> "T"
+        Home -> "T"
         is Feeds -> listOf("F", topic).joinToString(SEPARATOR)
         is Articles -> listOf("A", topic, feedName, feedUrl).joinToString(SEPARATOR)
         is Article -> listOf("R", topic, feedName, feedUrl, articleId.toString())
@@ -60,7 +61,7 @@ sealed class Screen(val depth: Int) {
         private const val SEPARATOR = "\u001F"
 
         /**
-         * The reverse of [encode]. Anything unrecognised becomes [Topics], so a
+         * The reverse of [encode]. Anything unrecognised becomes [Home], so a
          * damaged saved state can never crash the app.
          */
         fun decode(text: String): Screen {
@@ -82,7 +83,7 @@ sealed class Screen(val depth: Int) {
                     parts.getOrElse(4) { "" }.toLongOrNull() ?: 0L,
                 )
                 "N" -> AddFeed(parts.getOrElse(1) { "" })
-                else -> Topics
+                else -> Home
             }
         }
 
@@ -94,7 +95,7 @@ sealed class Screen(val depth: Int) {
          */
         val StackSaver: Saver<List<Screen>, List<String>> = Saver(
             save = { stack -> stack.map { it.encode() } },
-            restore = { saved -> saved.map { decode(it) }.ifEmpty { listOf(Topics) } },
+            restore = { saved -> saved.map { decode(it) }.ifEmpty { listOf(Home) } },
         )
     }
 }
