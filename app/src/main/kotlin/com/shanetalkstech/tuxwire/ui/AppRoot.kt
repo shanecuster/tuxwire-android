@@ -194,6 +194,7 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                             onOpenFeed = { push(Screen.Articles(it.topic, it.name, it.url)) },
                             onOpenTopic = { push(Screen.Feeds(it)) },
                             onOpenOpml = { push(Screen.Opml) },
+                            onOpenSaved = { push(Screen.Saved) },
                             onAddFeed = { push(Screen.AddFeed("")) },
                         )
                         // Import and export of feed lists.
@@ -201,6 +202,16 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                             db = db,
                             onHome = goHome,
                             onBack = pop,
+                        )
+                        // Saved articles and notes. Opening one shows its article
+                        // page (note, edit, delete); "saved" stands in for the
+                        // topic and the article's source for the feed name in the
+                        // breadcrumb, and there is no feed address.
+                        Screen.Saved -> SavedScreen(
+                            db = db,
+                            onHome = goHome,
+                            onBack = pop,
+                            onOpenArticle = { push(Screen.Article("saved", it.source, "", it.id)) },
                         )
                         // One topic's feeds.
                         is Screen.Feeds -> FeedsScreen(
@@ -214,6 +225,7 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                             onOpenFeed = { push(Screen.Articles(screen.topic, it.name, it.url)) },
                             onOpenTopic = {},
                             onOpenOpml = {},
+                            onOpenSaved = {},
                             onAddFeed = { push(Screen.AddFeed(screen.topic)) },
                         )
                         is Screen.Articles -> ArticlesScreen(
