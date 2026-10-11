@@ -16,6 +16,7 @@ feed accepts a blog's address as well as a feed address: tuxwire finds the feed
 (skipping comment feeds). tuxwire also appears in Android's Share menu, so
 sharing a page from the browser opens the add-feed form with it already checked.
 Saving a new feed downloads its articles straight away, so it never looks empty.
+Importing an OPML file does the same once, for all the feeds it added.
 
 ## How it fits together
 

@@ -83,8 +83,34 @@ fun OpmlScreen(
     ) { uri: Uri? ->
         if (uri != null) {
             runTask {
+                // Step 1: read the chosen file and add its feeds. A bad file
+                // throws here, and `runTask` shows that as an error.
                 val text = onIo { readLimitedText(context, uri) }
-                onIo { db.importOpml(text) }.describe()
+                val report = onIo { db.importOpml(text) }
+                val imported = report.describe()
+
+                // Step 2: if nothing new was added there is nothing to
+                // download, so stop with the import line alone. (`0u` is an
+                // unsigned zero, because Rust sends the count as `UInt`.)
+                if (report.added == 0u) {
+                    imported
+                } else {
+                    // Step 3: show progress, then download articles once for
+                    // everyone, so imported feeds do not look empty and broken.
+                    message = "$imported. downloading articles..."
+                    isError = false
+                    try {
+                        "$imported. ${db.refreshAll().describe()}"
+                    } catch (e: CancellationException) {
+                        // Never swallow cancellation; it must propagate.
+                        throw e
+                    } catch (t: Throwable) {
+                        // The import itself worked, so say so rather than
+                        // turning the whole result into an error.
+                        "$imported. Articles could not be downloaded yet " +
+                            "(${t.explain()}). They will arrive on the next refresh."
+                    }
+                }
             }
         }
     }
@@ -123,7 +149,7 @@ fun OpmlScreen(
             TuiPanel(title = "import") {
                 MonoText(
                     "Add feeds from an OPML file made by another feed reader. " +
-                        "Folders become topics; feeds you already have are skipped.",
+                        "Folders become topics; feeds you already have are skipped. New feeds have their articles downloaded straight away.",
                     colors.textPrimary,
                 )
                 TuiButton(
