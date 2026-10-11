@@ -31,12 +31,12 @@ resolver = "3"
 # master can never silently break this app. To move to a newer core, change
 # this hash on purpose, then rebuild and test.
 #
-# This commit is the tip of tuxwire's `feature/feed-discovery` branch: paste a
-# web page and core finds its feed (`discover_feed`), skipping comment feeds. It
-# sits on top of the User-Agent fix, parallel refresh, OPML and article
-# summaries, and only exists on GitHub once that branch has been merged and
-# pushed.
-tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "0dcc013fed104427f2009963c240fec1d7ed02bd" }
+# This commit is the tip of tuxwire's `feature/notes-export-core` branch: core
+# builds the saved-articles-and-notes export (`render_saved_markdown`). It sits
+# on top of feed discovery, the User-Agent fix, parallel refresh, OPML and
+# article summaries, and only exists on GitHub once that branch has been merged
+# and pushed.
+tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "a49d7726b36b206e57845231af4f47edefef4daf" }
 
 # `anyhow` is the catch-all error type tuxwire-core returns from its functions.
 # This crate needs to name that type to convert it into the error Kotlin sees.
