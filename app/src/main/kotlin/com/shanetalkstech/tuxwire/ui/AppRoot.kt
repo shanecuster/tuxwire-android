@@ -40,9 +40,15 @@ private const val THEME_SETTING = "theme"
  * Navigation is a plain "back stack": a list of screens, the last one being
  * visible. Going deeper pushes a screen on the end; going back removes it. It
  * is kept in `rememberSaveable` so it survives rotation.
+ *
+ * @param sharedText text another app shared to tuxwire through Android's Share
+ *   menu (normally a web address), or `null` when nothing was shared. When it
+ *   arrives the add-feed form opens with that address filled in and checked.
+ * @param onSharedTextHandled called once the shared text has been acted on, so
+ *   the activity can forget it (otherwise it would be acted on again).
  */
 @Composable
-fun AppRoot() {
+fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -109,6 +115,16 @@ fun AppRoot() {
         if (stack.size > 1) {
             stack = listOf(Screen.Home)
             homeVisits++
+        }
+    }
+
+    // Something was shared to tuxwire: show the add-feed form on top of home,
+    // with the address filled in. `LaunchedEffect(sharedText)` runs whenever
+    // `sharedText` changes to a new value, including the first time.
+    LaunchedEffect(sharedText) {
+        if (sharedText != null) {
+            stack = listOf(Screen.Home, Screen.AddFeed(topic = "", address = firstWebAddress(sharedText)))
+            onSharedTextHandled()
         }
     }
 
@@ -229,6 +245,7 @@ fun AppRoot() {
                         is Screen.AddFeed -> AddFeedScreen(
                             db = db,
                             startTopic = screen.topic,
+                            startAddress = screen.address,
                             onHome = goHome,
                             onBack = pop,
                             onDone = pop,

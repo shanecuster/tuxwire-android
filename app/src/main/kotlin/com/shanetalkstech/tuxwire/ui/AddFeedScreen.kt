@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -35,6 +36,8 @@ import uniffi.tuxwire_ffi.previewFeed
  *
  * @param db the open database.
  * @param startTopic a topic to pre-fill (empty for none).
+ * @param startAddress an address to pre-fill and check at once (empty for none);
+ *   set when the page was shared to tuxwire from another app.
  * @param onHome jumps straight to the feed list (the "home" button at the top).
  * @param onBack leaves without saving and returns to the previous screen (the
  *   "cancel" button at the bottom). There is no separate "back" button: cancel
@@ -45,6 +48,7 @@ import uniffi.tuxwire_ffi.previewFeed
 fun AddFeedScreen(
     db: Database,
     startTopic: String,
+    startAddress: String,
     onHome: () -> Unit,
     onBack: () -> Unit,
     onDone: () -> Unit,
@@ -53,7 +57,7 @@ fun AddFeedScreen(
 
     // What has been typed. `rememberSaveable` keeps it across rotation, so a
     // half-filled form is not lost.
-    var url by rememberSaveable { mutableStateOf("") }
+    var url by rememberSaveable { mutableStateOf(startAddress) }
     var name by rememberSaveable { mutableStateOf("") }
     var topic by rememberSaveable { mutableStateOf(startTopic) }
     var status by rememberSaveable { mutableStateOf("") }
@@ -68,6 +72,52 @@ fun AddFeedScreen(
 
     // Saving needs all three boxes filled in.
     val canSave = !busy && url.isNotBlank() && name.isNotBlank() && topic.isNotBlank()
+
+    // Finds the feed for the address in the box and fills in the details. It is a
+    // local function (a value holding a block of code) because two things run
+    // it: the "check" button, and the form itself when it opens with an address
+    // already filled in (from the Share menu).
+    val checkAddress: () -> Unit = {
+        busy = true
+        status = "checking..."
+        scope.launch {
+            try {
+                // Find the feed for what was typed (a feed address, or a
+                // web page that has a feed), then download and read it.
+                // If it works we learn its own title and how many
+                // articles it has. Core adds "https://" when no scheme
+                // was typed, so the text is passed on as it is.
+                val preview = previewFeed(url.trim())
+                // The feed may live at a different address than the page
+                // that was typed. Put the real one in the box, so what
+                // is saved is exactly what the person can see.
+                url = preview.url
+                // Only suggest a name if the person has not typed one.
+                if (name.isBlank()) name = preview.title
+                // Say how it was found when it was not typed directly,
+                // so a changed address is never a surprise.
+                val how = when (preview.foundBy) {
+                    FoundBy.DIRECT -> ""
+                    FoundBy.ADVERTISED -> "\nfound through the page's own feed link"
+                    FoundBy.GUESSED -> "\nthe page lists no feed; found one at a common address"
+                }
+                status = "found: ${preview.title} (${preview.entryCount} articles)$how"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                status = "error: ${t.explain()}"
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    // Opened from the Share menu with an address: check it straight away, so the
+    // person only has to pick a topic and save. `status.isEmpty()` keeps this
+    // from running again after the phone is rotated (the status is saved).
+    LaunchedEffect(Unit) {
+        if (startAddress.isNotBlank() && status.isEmpty()) checkAddress()
+    }
 
     // The same frame as the other screens: "home" pinned at the top, the
     // action buttons pinned at the bottom (above the keyboard, within thumb
@@ -115,40 +165,7 @@ fun AddFeedScreen(
                 TuiButton(
                     label = if (busy) "checking..." else "check",
                     enabled = !busy && url.isNotBlank(),
-                    onClick = {
-                        busy = true
-                        status = "checking..."
-                        scope.launch {
-                            try {
-                                // Find the feed for what was typed (a feed address, or a
-                                // web page that has a feed), then download and read it.
-                                // If it works we learn its own title and how many
-                                // articles it has. Core adds "https://" when no scheme
-                                // was typed, so the text is passed on as it is.
-                                val preview = previewFeed(url.trim())
-                                // The feed may live at a different address than the page
-                                // that was typed. Put the real one in the box, so what
-                                // is saved is exactly what the person can see.
-                                url = preview.url
-                                // Only suggest a name if the person has not typed one.
-                                if (name.isBlank()) name = preview.title
-                                // Say how it was found when it was not typed directly,
-                                // so a changed address is never a surprise.
-                                val how = when (preview.foundBy) {
-                                    FoundBy.DIRECT -> ""
-                                    FoundBy.ADVERTISED -> "\nfound through the page's own feed link"
-                                    FoundBy.GUESSED -> "\nthe page lists no feed; found one at a common address"
-                                }
-                                status = "found: ${preview.title} (${preview.entryCount} articles)$how"
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (t: Throwable) {
-                                status = "error: ${t.explain()}"
-                            } finally {
-                                busy = false
-                            }
-                        }
-                    },
+                    onClick = checkAddress,
                 )
                 if (status.isNotEmpty()) {
                     MonoText(

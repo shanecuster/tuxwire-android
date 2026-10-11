@@ -11,7 +11,10 @@ open-in-browser. Tapping an article opens a plain-text summary first (articles
 with no summary open straight in the browser). Screens have a pinned top bar
 and bottom bar so the app can be used one-handed, and the logo changes
 colour each time you return to the home screen. Feed lists can be imported
-from and exported to OPML files (the format other feed readers use).
+from and exported to OPML files (the format other feed readers use). Adding a
+feed accepts a blog's address as well as a feed address: tuxwire finds the feed
+(skipping comment feeds). tuxwire also appears in Android's Share menu, so
+sharing a page from the browser opens the add-feed form with it already checked.
 
 ## How it fits together
 

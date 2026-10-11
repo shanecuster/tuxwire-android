@@ -88,3 +88,18 @@ fun normalisedFeedUrl(raw: String): String {
         "https://$trimmed"
     }
 }
+
+/**
+ * Picks the web address out of text shared from another app. Most apps share
+ * just the address, but some share a title and the address together ("Great
+ * post https://example.com/p"), so the first `http://` or `https://` word wins.
+ * Full stops, commas and similar are trimmed off its end (they are almost
+ * always the sentence's punctuation, not part of the address). With no address
+ * in the text, the text itself is returned (trimmed) and the add-feed form
+ * will say it is not a web address.
+ */
+fun firstWebAddress(text: String): String {
+    // `\S+` means "one or more characters that are not blank space".
+    val found = Regex("""https?://\S+""", RegexOption.IGNORE_CASE).find(text)
+    return (found?.value ?: text).trim().trimEnd('.', ',', ';', ':', '!', '?')
+}
