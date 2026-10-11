@@ -47,6 +47,7 @@ uniffi::setup_scaffolding!();
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use tuxwire_core::export::{ExportOptions, render_saved_markdown};
 use tuxwire_core::fetch_report::FetchReport;
 use tuxwire_core::fetchers::{SourceType, configured_sources, fetch_all};
 use tuxwire_core::models::Article;
@@ -324,6 +325,34 @@ pub struct ArticleDetail {
     pub published: i64,
     /// The plain-text summary, or `None` if the feed sent none.
     pub summary: Option<String>,
+    /// Whether the article has been saved.
+    pub saved: bool,
+    /// The person's note on the article, or `None` if there is none.
+    pub note: Option<String>,
+}
+
+/// One saved article, for the Saved screen: the article's basics plus the
+/// dates and the note.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SavedArticle {
+    /// Database ID.
+    pub id: i64,
+    /// Headline.
+    pub title: String,
+    /// The article's own web address (what "open in browser" opens).
+    pub url: String,
+    /// Name of the feed it came from.
+    pub source: String,
+    /// When it was published, as seconds since 1 January 1970 UTC.
+    pub published: i64,
+    /// When it was saved, as seconds since 1970. Articles saved before the
+    /// app recorded this fall back to their publish time, so it is never
+    /// missing.
+    pub saved_at: i64,
+    /// The note, or `None` if the article has none.
+    pub note: Option<String>,
+    /// When the note was last written, as seconds since 1970, or `None`.
+    pub noted_at: Option<i64>,
 }
 
 /// Builds the app's feed records, each with its unread count.
@@ -385,6 +414,27 @@ impl From<&Article> for ArticleDetail {
             source: article.source.clone(),
             published: article.timestamp.timestamp(),
             summary: article.summary.clone(),
+            saved: article.saved,
+            note: article.note.clone(),
+        }
+    }
+}
+
+/// Converts a stored article into the record the Saved screen shows.
+impl From<&Article> for SavedArticle {
+    /// Copies the fields the Saved screen needs.
+    fn from(article: &Article) -> SavedArticle {
+        SavedArticle {
+            id: article.id,
+            title: article.title.clone(),
+            url: article.url.clone(),
+            source: article.source.clone(),
+            published: article.timestamp.timestamp(),
+            // `unwrap_or` supplies the publish time when `saved_at` is empty.
+            saved_at: article.saved_at.unwrap_or(article.timestamp).timestamp(),
+            // A note that is only spaces counts as no note, matching the export.
+            note: article.note.clone().filter(|text| !text.trim().is_empty()),
+            noted_at: article.noted_at.map(|moment| moment.timestamp()),
         }
     }
 }
@@ -455,6 +505,14 @@ impl Database {
     fn lock(&self) -> Result<MutexGuard<'_, Storage>, FfiError> {
         self.storage.lock().map_err(|_| FfiError::Failed {
             detail: "database lock was poisoned by an earlier panic".to_string(),
+        })
+    }
+
+    /// Looks an article up by ID, turning "not found" into a readable error
+    /// (an associated function: it takes the already-locked `Storage`).
+    fn existing_article(storage: &Storage, id: i64) -> Result<Article, FfiError> {
+        storage.article_by_id(id)?.ok_or_else(|| FfiError::Failed {
+            detail: "that article no longer exists".to_string(),
         })
     }
 
@@ -673,6 +731,74 @@ impl Database {
     pub fn mark_read(&self, id: i64) -> Result<(), FfiError> {
         let storage = self.lock()?;
         Ok(storage.mark_read(id)?)
+    }
+
+    /// Every saved article, newest first, each with its note (if any).
+    ///
+    /// The Saved screen filters and sorts this list itself (for the "notes
+    /// only" view and search), so it is returned whole.
+    pub fn list_saved_articles(&self) -> Result<Vec<SavedArticle>, FfiError> {
+        let storage = self.lock()?;
+        let articles = storage.saved_articles()?;
+        Ok(articles.iter().map(SavedArticle::from).collect())
+    }
+
+    /// Saves an article (with no note). Saving also marks it read.
+    ///
+    /// Saving an article that is already saved does nothing, so the date it
+    /// was first saved is kept. Saved articles are permanent: there is
+    /// deliberately no way to un-save one, the same as in the terminal app.
+    /// Fails with a readable message if no article has this ID.
+    pub fn save_article(&self, id: i64) -> Result<(), FfiError> {
+        let storage = self.lock()?;
+        let article = Self::existing_article(&storage, id)?;
+        if !article.saved {
+            storage.save_article(id, None)?;
+        }
+        Ok(())
+    }
+
+    /// Sets, replaces or clears the note on an article.
+    ///
+    /// A note of `None`, or only spaces, clears the note. An article that is
+    /// not saved yet is saved first, because a note only makes sense on a
+    /// saved article. An article that is already saved keeps its original
+    /// save date. Fails with a readable message if no article has this ID.
+    pub fn set_note(&self, id: i64, note: Option<String>) -> Result<(), FfiError> {
+        let storage = self.lock()?;
+        let article = Self::existing_article(&storage, id)?;
+
+        // Step 1: tidy the note. `map` trims the ends, and `filter` turns an
+        // empty result into `None`, so "nothing typed" clears the note.
+        let note = note
+            .map(|text| text.trim().to_string())
+            .filter(|text| !text.is_empty());
+
+        // Step 2: save the article first if it is not saved yet.
+        if !article.saved {
+            storage.save_article(id, None)?;
+        }
+
+        // Step 3: store the note. Core also keeps the "noted" date in step
+        // with it (set when there is a note, cleared when there is none).
+        Ok(storage.update_note(id, note)?)
+    }
+
+    /// The text of the "saved articles and notes" export, ready to be written
+    /// to a file the person chooses.
+    ///
+    /// `include_unnoted` says whether saved articles that have no note are
+    /// listed too (the first section of the file). Returns an empty string
+    /// when there is nothing to export, so the app can say so instead of
+    /// saving an empty file. Reading only: exporting never changes or
+    /// deletes anything.
+    pub fn export_saved(&self, include_unnoted: bool) -> Result<String, FfiError> {
+        let storage = self.lock()?;
+        let articles = storage.saved_articles()?;
+        Ok(render_saved_markdown(
+            &articles,
+            &ExportOptions { include_unnoted },
+        ))
     }
 
     /// Reads a saved setting (for example "theme"), or `None` if never saved.
@@ -1201,6 +1327,148 @@ mod tests {
 
         // An unknown ID is a readable error, not a crash.
         assert!(db.article_detail(99999).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Refreshes the sample feed (two articles) into a fresh database and
+    /// returns the database, the two article IDs and the folder to clean up.
+    async fn database_with_two_articles() -> (Arc<Database>, i64, i64, std::path::PathBuf) {
+        let (db, dir) = temp_database();
+        let url = serve_sample_feed();
+        db.add_feed("Sample".into(), url.clone(), "tech".into())
+            .unwrap();
+        db.refresh_all().await.unwrap();
+        let articles = db.list_articles(url).unwrap();
+        let first = articles
+            .iter()
+            .find(|a| a.title == "First article")
+            .unwrap();
+        let second = articles
+            .iter()
+            .find(|a| a.title == "Second article")
+            .unwrap();
+        (db.clone(), first.id, second.id, dir)
+    }
+
+    /// Saving, writing a note, changing it and clearing it all show up in the
+    /// article detail and the saved list, and the note's date follows the note.
+    #[tokio::test]
+    async fn saving_and_noting_an_article() {
+        let (db, first, _second, dir) = database_with_two_articles().await;
+
+        // Nothing is saved to begin with.
+        assert!(db.list_saved_articles().unwrap().is_empty());
+        assert!(!db.article_detail(first).unwrap().saved);
+
+        // Saving marks it saved and read, with no note.
+        db.save_article(first).unwrap();
+        let detail = db.article_detail(first).unwrap();
+        assert!(detail.saved);
+        assert_eq!(detail.note, None);
+        let saved = db.list_saved_articles().unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].note, None);
+        assert_eq!(saved[0].noted_at, None);
+
+        // A note is trimmed and stored, with a note date.
+        db.set_note(first, Some("  worth trying  ".into())).unwrap();
+        let saved = db.list_saved_articles().unwrap();
+        assert_eq!(saved[0].note.as_deref(), Some("worth trying"));
+        assert!(saved[0].noted_at.is_some());
+        assert_eq!(
+            db.article_detail(first).unwrap().note.as_deref(),
+            Some("worth trying")
+        );
+
+        // Clearing it (nothing, or only spaces) removes the note and its date
+        // but leaves the article saved.
+        db.set_note(first, Some("   ".into())).unwrap();
+        let saved = db.list_saved_articles().unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].note, None);
+        assert_eq!(saved[0].noted_at, None);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Writing a note on an article that is not saved saves it first, and an
+    /// unknown article is a readable error rather than a crash.
+    #[tokio::test]
+    async fn a_note_saves_the_article_and_unknown_ids_fail() {
+        let (db, first, second, dir) = database_with_two_articles().await;
+
+        db.set_note(second, Some("remember this".into())).unwrap();
+        assert!(db.article_detail(second).unwrap().saved);
+        // Only the noted one is saved.
+        let saved = db.list_saved_articles().unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].id, second);
+        assert!(!db.article_detail(first).unwrap().saved);
+
+        assert!(db.save_article(99999).is_err());
+        assert!(db.set_note(99999, Some("x".into())).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Saving again, or noting an already-saved article, keeps the date it
+    /// was first saved.
+    #[tokio::test]
+    async fn saving_again_keeps_the_original_save_date() {
+        let (db, first, _second, dir) = database_with_two_articles().await;
+
+        db.save_article(first).unwrap();
+        // The full-precision date, straight from the database.
+        let saved_at = |db: &Database| {
+            db.lock()
+                .unwrap()
+                .article_by_id(first)
+                .unwrap()
+                .unwrap()
+                .saved_at
+        };
+        let before = saved_at(&db);
+        assert!(before.is_some());
+
+        db.save_article(first).unwrap();
+        db.set_note(first, Some("a note".into())).unwrap();
+        assert_eq!(saved_at(&db), before);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The export lists saved articles without a note first and the notes
+    /// after, the switch leaves the first section out, there is an empty
+    /// result when nothing is saved, and exporting changes nothing.
+    #[tokio::test]
+    async fn exporting_saved_articles_and_notes() {
+        let (db, first, second, dir) = database_with_two_articles().await;
+
+        // Nothing saved: nothing to export.
+        assert_eq!(db.export_saved(true).unwrap(), "");
+
+        db.save_article(first).unwrap();
+        db.set_note(second, Some("try this on the NAS".into()))
+            .unwrap();
+
+        let everything = db.export_saved(true).unwrap();
+        let saved_at = everything.find("## Saved articles (1)").unwrap();
+        let notes_at = everything.find("## Notes (1)").unwrap();
+        assert!(saved_at < notes_at, "articles without notes come first");
+        assert!(everything.contains("First article"));
+        assert!(everything.contains("> try this on the NAS"));
+
+        let only_notes = db.export_saved(false).unwrap();
+        assert!(only_notes.contains("## Notes (1)"));
+        assert!(!only_notes.contains("First article"));
+
+        // Exporting twice gives the same text and the note is still there.
+        assert_eq!(db.export_saved(true).unwrap(), everything);
+        assert_eq!(
+            db.article_detail(second).unwrap().note.as_deref(),
+            Some("try this on the NAS")
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
