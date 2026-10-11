@@ -31,10 +31,31 @@
         -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+              The Share menu entry. This second <intent-filter> says "tuxwire can
+              receive plain text that another app shares" (ACTION_SEND with
+              text/plain). Browsers share the page's address this way, so
+              tuxwire appears in their Share list; choosing it opens the
+              add-feed form with the address filled in. The DEFAULT category is
+              required for an app to be offered as a Share target. Nothing is
+              read except the text the person chose to share.
+
+              launchMode="singleTask" keeps exactly one tuxwire screen: a share
+              that arrives while tuxwire is already open is delivered to it
+              (MainActivity.onNewIntent) instead of opening a second copy, which
+              would open the database twice.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
     </application>

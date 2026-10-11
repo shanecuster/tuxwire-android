@@ -3,12 +3,12 @@ package com.shanetalkstech.tuxwire.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -22,25 +22,34 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import uniffi.tuxwire_ffi.Database
+import uniffi.tuxwire_ffi.FoundBy
 import uniffi.tuxwire_ffi.TopicInfo
 import uniffi.tuxwire_ffi.previewFeed
 
 /**
- * The add-feed form: type an address, tap "check" to download it and fill in
- * the feed's own title, choose or type a topic, then "save".
+ * The add-feed form: type a feed address, or just a blog's address, tap "check"
+ * to find and download the feed and fill in its own title, choose or type a
+ * topic, then "save".
  *
  * Checking first means a typo is caught here, with a clear message, instead of
  * as a feed that silently never works.
  *
  * @param db the open database.
  * @param startTopic a topic to pre-fill (empty for none).
- * @param onBack leaves without saving.
+ * @param startAddress an address to pre-fill and check at once (empty for none);
+ *   set when the page was shared to tuxwire from another app.
+ * @param onHome jumps straight to the feed list (the "home" button at the top).
+ * @param onBack leaves without saving and returns to the previous screen (the
+ *   "cancel" button at the bottom). There is no separate "back" button: cancel
+ *   goes to exactly the same place.
  * @param onDone called after the feed was saved.
  */
 @Composable
 fun AddFeedScreen(
     db: Database,
     startTopic: String,
+    startAddress: String,
+    onHome: () -> Unit,
     onBack: () -> Unit,
     onDone: () -> Unit,
 ) {
@@ -48,11 +57,14 @@ fun AddFeedScreen(
 
     // What has been typed. `rememberSaveable` keeps it across rotation, so a
     // half-filled form is not lost.
-    var url by rememberSaveable { mutableStateOf("") }
+    var url by rememberSaveable { mutableStateOf(startAddress) }
     var name by rememberSaveable { mutableStateOf("") }
     var topic by rememberSaveable { mutableStateOf(startTopic) }
     var status by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    // True once the feed has been saved, so it cannot be saved a second time
+    // while the form is still open (for example after a failed first download).
+    var saved by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     // The topics that already exist, offered below the topic box so a tap
@@ -61,97 +73,174 @@ fun AddFeedScreen(
         value = runCatching { onIo { db.listTopics() } }.getOrDefault(emptyList())
     }
 
-    // Saving needs all three boxes filled in.
-    val canSave = !busy && url.isNotBlank() && name.isNotBlank() && topic.isNotBlank()
+    // Saving needs all three boxes filled in, and only works once.
+    val canSave = !busy && !saved && url.isNotBlank() && name.isNotBlank() && topic.isNotBlank()
 
-    Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        ScreenHeader(path = "tuxwire / add feed", onBack = onBack)
-
-        TuiPanel(title = "feed") {
-            TuiField(
-                label = "address",
-                value = url,
-                onValueChange = { url = it },
-                keyboardType = KeyboardType.Uri,
-            )
-            TuiButton(
-                label = if (busy) "checking..." else "check",
-                enabled = !busy && url.isNotBlank(),
-                onClick = {
-                    busy = true
-                    status = "checking..."
-                    scope.launch {
-                        try {
-                            // Download and read the feed. If it works we learn its
-                            // own title and how many articles it has.
-                            val preview = previewFeed(normalisedFeedUrl(url))
-                            // Only suggest a name if the person has not typed one.
-                            if (name.isBlank()) name = preview.title
-                            status = "found: ${preview.title} (${preview.entryCount} articles)"
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (t: Throwable) {
-                            status = "error: ${t.explain()}"
-                        } finally {
-                            busy = false
-                        }
-                    }
-                },
-            )
-            if (status.isNotEmpty()) {
-                MonoText(
-                    text = status,
-                    color = if (status.startsWith("error")) colors.accentBreaking else colors.textMuted,
-                )
+    // Finds the feed for the address in the box and fills in the details. It is a
+    // local function (a value holding a block of code) because two things run
+    // it: the "check" button, and the form itself when it opens with an address
+    // already filled in (from the Share menu).
+    val checkAddress: () -> Unit = {
+        busy = true
+        status = "checking..."
+        scope.launch {
+            try {
+                // Find the feed for what was typed (a feed address, or a
+                // web page that has a feed), then download and read it.
+                // If it works we learn its own title and how many
+                // articles it has. Core adds "https://" when no scheme
+                // was typed, so the text is passed on as it is.
+                val preview = previewFeed(url.trim())
+                // The feed may live at a different address than the page
+                // that was typed. Put the real one in the box, so what
+                // is saved is exactly what the person can see.
+                url = preview.url
+                // Only suggest a name if the person has not typed one.
+                if (name.isBlank()) name = preview.title
+                // Say how it was found when it was not typed directly,
+                // so a changed address is never a surprise.
+                val how = when (preview.foundBy) {
+                    FoundBy.DIRECT -> ""
+                    FoundBy.ADVERTISED -> "\nfound through the page's own feed link"
+                    FoundBy.GUESSED -> "\nthe page lists no feed; found one at a common address"
+                }
+                status = "found: ${preview.title} (${preview.entryCount} articles)$how"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                status = "error: ${t.explain()}"
+            } finally {
+                busy = false
             }
         }
+    }
 
-        TuiPanel(title = "details") {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                TuiField(label = "name", value = name, onValueChange = { name = it })
-                TuiField(label = "topic", value = topic, onValueChange = { topic = it })
+    // Opened from the Share menu with an address: check it straight away, so the
+    // person only has to pick a topic and save. `status.isEmpty()` keeps this
+    // from running again after the phone is rotated (the status is saved).
+    LaunchedEffect(Unit) {
+        if (startAddress.isNotBlank() && status.isEmpty()) checkAddress()
+    }
+
+    // The same frame as the other screens: "home" pinned at the top, the
+    // action buttons pinned at the bottom (above the keyboard, within thumb
+    // reach), and only the form in the middle scrolls.
+    PinnedLayout(
+        top = { TopBar(path = "tuxwire / add feed", onHome = onHome) },
+        bottom = {
+            BottomBar {
+                TuiButton(
+                    label = "save",
+                    enabled = canSave,
+                    onClick = {
+                        busy = true
+                        scope.launch {
+                            // The address exactly as it will be stored. The same
+                            // text is used to save the feed and then to fetch it.
+                            val address = normalisedFeedUrl(url)
+
+                            // Step 1: save the feed on a background thread. A
+                            // failure here (for example "this feed is already
+                            // added") stops everything and is shown in red.
+                            try {
+                                onIo { db.addFeed(name, address, topic) }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (t: Throwable) {
+                                status = "error: ${t.explain()}"
+                                busy = false
+                                return@launch
+                            }
+
+                            // Step 2: the feed is saved, so a second tap on "save"
+                            // must not try to add it again. Download its articles
+                            // now, so the person never sees a freshly added feed
+                            // with nothing in it and thinks the app is broken.
+                            saved = true
+                            status = "saved. downloading articles..."
+
+                            // `problem` is `null` when all went well, otherwise a
+                            // short reason. A failed download is reported in the
+                            // summary (`failed`); a thrown error is caught too.
+                            // The feed stays saved either way.
+                            val problem: String? = try {
+                                val summary = db.refreshFeed(address)
+                                if (summary.failed > 0u) {
+                                    summary.messages.firstOrNull() ?: "the download failed"
+                                } else {
+                                    null
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (t: Throwable) {
+                                t.explain()
+                            }
+                            busy = false
+
+                            // Step 3: on success leave the form. On a problem, stay
+                            // and say so (the feed's articles arrive on the next
+                            // refresh), because leaving would hide the message.
+                            if (problem == null) {
+                                onDone()
+                            } else {
+                                status = "saved, but its articles could not be " +
+                                    "downloaded yet ($problem). They will arrive " +
+                                    "on the next refresh."
+                            }
+                        }
+                    },
+                )
+                TuiButton(label = "cancel", onClick = onBack)
             }
-            // Existing topics, tap to use one.
-            if (existing.isNotEmpty()) {
-                MonoText("existing topics (tap to use):", colors.textMuted, Modifier.padding(top = 10.dp))
-                for (t in existing) {
+        },
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            TuiPanel(title = "feed") {
+                TuiField(
+                    label = "feed or page address",
+                    value = url,
+                    onValueChange = { url = it },
+                    keyboardType = KeyboardType.Uri,
+                )
+                TuiButton(
+                    label = if (busy) "checking..." else "check",
+                    enabled = !busy && url.isNotBlank(),
+                    onClick = checkAddress,
+                )
+                if (status.isNotEmpty()) {
                     MonoText(
-                        text = t.name,
-                        color = colors.accentUnread,
-                        modifier = Modifier
-                            .clickable { topic = t.name }
-                            .padding(vertical = 6.dp),
+                        text = status,
+                        color = if (status.startsWith("error") || status.startsWith("saved, but")) {
+                            colors.accentBreaking
+                        } else {
+                            colors.textMuted
+                        },
                     )
                 }
             }
-        }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            TuiButton(
-                label = "save",
-                enabled = canSave,
-                onClick = {
-                    busy = true
-                    scope.launch {
-                        try {
-                            // Save on a background thread, then leave the form.
-                            onIo { db.addFeed(name, normalisedFeedUrl(url), topic) }
-                            onDone()
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (t: Throwable) {
-                            // For example "this feed is already added".
-                            status = "error: ${t.explain()}"
-                        } finally {
-                            busy = false
-                        }
+            TuiPanel(title = "details") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TuiField(label = "name", value = name, onValueChange = { name = it })
+                    TuiField(label = "topic", value = topic, onValueChange = { topic = it })
+                }
+                // Existing topics, tap to use one.
+                if (existing.isNotEmpty()) {
+                    MonoText("existing topics (tap to use):", colors.textMuted, Modifier.padding(top = 10.dp))
+                    for (t in existing) {
+                        MonoText(
+                            text = t.name,
+                            color = colors.accentUnread,
+                            modifier = Modifier
+                                .clickable { topic = t.name }
+                                .padding(vertical = 6.dp),
+                        )
                     }
-                },
-            )
-            TuiButton(label = "cancel", onClick = onBack)
+                }
+            }
         }
     }
 }

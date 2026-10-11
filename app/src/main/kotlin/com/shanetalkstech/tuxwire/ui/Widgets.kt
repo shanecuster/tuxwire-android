@@ -4,14 +4,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -160,28 +158,5 @@ fun TuiField(
                 .border(1.dp, colors.textDim)
                 .padding(8.dp),
         )
-    }
-}
-
-/**
- * The line at the top of every screen: where you are ("tuxwire / linux"),
- * with a back button when there is somewhere to go back to.
- *
- * @param path the breadcrumb text.
- * @param onBack called by the back button; `null` hides the button (the first
- *   screen has nowhere to go back to).
- */
-@Composable
-fun ScreenHeader(path: String, onBack: (() -> Unit)?) {
-    val colors = LocalTuxwireColors.current
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        if (onBack != null) {
-            TuiButton(label = "back", onClick = onBack)
-        }
-        MonoText(path, colors.accentSelected, bold = true)
     }
 }

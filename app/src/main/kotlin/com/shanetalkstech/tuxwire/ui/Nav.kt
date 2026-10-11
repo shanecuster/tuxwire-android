@@ -40,8 +40,12 @@ sealed class Screen(val depth: Int) {
         val articleId: Long,
     ) : Screen(3)
 
-    /** The add-feed form. [topic] pre-fills the topic box (empty for none). */
-    data class AddFeed(val topic: String) : Screen(3)
+    /**
+     * The add-feed form. [topic] pre-fills the topic box and [address] the
+     * address box (both empty for none). [address] is set when a page is
+     * shared to tuxwire from another app.
+     */
+    data class AddFeed(val topic: String, val address: String = "") : Screen(3)
 
     /**
      * Turns this screen into text so Android can save it (for example across
@@ -54,7 +58,7 @@ sealed class Screen(val depth: Int) {
         is Articles -> listOf("A", topic, feedName, feedUrl).joinToString(SEPARATOR)
         is Article -> listOf("R", topic, feedName, feedUrl, articleId.toString())
             .joinToString(SEPARATOR)
-        is AddFeed -> listOf("N", topic).joinToString(SEPARATOR)
+        is AddFeed -> listOf("N", topic, address).joinToString(SEPARATOR)
     }
 
     companion object {
@@ -87,7 +91,7 @@ sealed class Screen(val depth: Int) {
                     // shows an error message instead of crashing.
                     parts.getOrElse(4) { "" }.toLongOrNull() ?: 0L,
                 )
-                "N" -> AddFeed(parts.getOrElse(1) { "" })
+                "N" -> AddFeed(parts.getOrElse(1) { "" }, parts.getOrElse(2) { "" })
                 else -> Home
             }
         }
