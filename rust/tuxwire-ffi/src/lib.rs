@@ -20,8 +20,9 @@
 //! * **The database** (`Database`) -- one object the app opens once. Through it
 //!   the app reads topics, feeds and articles, adds and removes feeds, marks
 //!   articles read, saves settings, and refreshes feeds from the network.
-//! * **A feed preview** (`preview_feed`) -- fetches a feed over HTTPS so the
-//!   "add feed" screen can check an address before saving it.
+//! * **A feed preview** (`preview_feed`) -- looks up the feed for an address
+//!   (a feed address, or a web page that has a feed) so the "add feed" screen
+//!   can check it before saving.
 //!
 //! All the real work (SQLite, fetching, parsing) lives in `tuxwire-core`. The
 //! functions here are thin: lock the database, call core, convert the answer
@@ -723,10 +724,44 @@ impl Database {
 // Feed preview
 // ---------------------------------------------------------------------------
 
-/// A quick look at a feed, used to check a URL before subscribing to it.
+/// How `preview_feed` arrived at the feed, so the add-feed screen can tell
+/// the person what happened. Mirrors `tuxwire_core::fetchers::discover::FoundBy`
+/// (see the module comment on why types are mirrored). Kotlin sees it as an
+/// `enum class FoundBy { DIRECT, ADVERTISED, GUESSED }`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum FoundBy {
+    /// The address given was itself a feed.
+    Direct,
+    /// The web page named its feed in a `<link>` line.
+    Advertised,
+    /// The page named nothing; a common address (`/feed`, `/index.xml`, ...)
+    /// turned out to be a feed.
+    Guessed,
+}
+
+/// Converts core's answer into the mirror type. `match` must list every
+/// variant, so a new one added to core is a compile error here until handled.
+impl From<tuxwire_core::fetchers::discover::FoundBy> for FoundBy {
+    fn from(found_by: tuxwire_core::fetchers::discover::FoundBy) -> Self {
+        use tuxwire_core::fetchers::discover::FoundBy as Core;
+        match found_by {
+            Core::Direct => FoundBy::Direct,
+            Core::Advertised => FoundBy::Advertised,
+            Core::Guessed => FoundBy::Guessed,
+        }
+    }
+}
+
+/// A quick look at a feed, used to check an address before subscribing to it.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct FeedPreview {
-    /// The feed's own title, or the URL when the feed has none.
+    /// The address of the feed itself. When the person typed a web page, this
+    /// is the feed that page led to, and it is the address to save.
+    pub url: String,
+    /// How the feed was found (typed directly, advertised by the page, or
+    /// found at a common address).
+    pub found_by: FoundBy,
+    /// The feed's own title, or its address when the feed has none.
     pub title: String,
     /// How many entries (articles) the feed currently lists.
     pub entry_count: u32,
@@ -735,7 +770,12 @@ pub struct FeedPreview {
     pub latest_titles: Vec<String>,
 }
 
-/// Downloads and parses the feed at `url` and returns a short summary.
+/// Finds the feed for `url` (a feed address, or the address of a page that has
+/// a feed), downloads and parses it, and returns a short summary.
+///
+/// All the looking is done by core's `discover_feed`: the address itself first,
+/// then the feed link the page advertises (comment feeds skipped), then a short
+/// list of usual addresses.
 ///
 /// ## What `async` means here
 ///
@@ -752,11 +792,19 @@ pub async fn preview_feed(url: String) -> Result<FeedPreview, FfiError> {
     // `.await` pauses this function until the download and parse finish; the
     // thread is free to do other work meanwhile. The `?` converts a failure
     // (bad URL, no network, malformed XML) into an `FfiError`.
-    let feed = tuxwire_core::fetchers::rss::fetch_feed(&url).await?;
+    let found = tuxwire_core::fetchers::discover::discover_feed(&url).await?;
+
+    // Take the pieces out of the answer. `found.url` is the feed's own
+    // address, which may differ from what was typed.
+    let feed = found.feed;
+    let feed_url = found.url;
 
     // The feed's title is optional in the feed format. `.map(..)` pulls out the
-    // text if present; `.unwrap_or_else(..)` falls back to the URL if not.
-    let title = feed.title.map(|t| t.content).unwrap_or_else(|| url.clone());
+    // text if present; `.unwrap_or_else(..)` falls back to the address if not.
+    let title = feed
+        .title
+        .map(|t| t.content)
+        .unwrap_or_else(|| feed_url.clone());
 
     // Remember the total before we look at individual entries.
     let entry_count = feed.entries.len() as u32;
@@ -780,6 +828,8 @@ pub async fn preview_feed(url: String) -> Result<FeedPreview, FfiError> {
         .collect();
 
     Ok(FeedPreview {
+        url: feed_url,
+        found_by: found.found_by.into(),
         title,
         entry_count,
         latest_titles,
@@ -934,6 +984,79 @@ mod tests {
         });
 
         format!("http://{address}/feed.xml")
+    }
+
+    /// Starts a tiny web server on 127.0.0.1 that pretends to be a blog: its
+    /// home page names a comments feed first and the real posts feed second,
+    /// and both feeds exist. Returns the server's address (no trailing `/`).
+    fn serve_blog() -> String {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+
+        std::thread::spawn(move || {
+            for stream in listener.incoming().take(8) {
+                let mut stream = stream.unwrap();
+                // Read the request and take the path from its first line
+                // (`GET /posts.xml HTTP/1.1`).
+                let mut buffer = [0u8; 2048];
+                let read = stream.read(&mut buffer).unwrap_or(0);
+                let request = String::from_utf8_lossy(&buffer[..read]).into_owned();
+                let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
+
+                let feed = |title: &str| {
+                    format!(
+                        r#"<?xml version="1.0"?><rss version="2.0"><channel><title>{title}</title><item><title>A post</title><link>https://example.com/p</link></item></channel></rss>"#
+                    )
+                };
+                let body = match path.as_str() {
+                    "/" => Some(
+                        r#"<html><head>
+<link rel="alternate" type="application/rss+xml" title="Blog » Comments Feed" href="/comments.xml">
+<link rel="alternate" type="application/rss+xml" title="Blog" href="/posts.xml">
+</head><body>hi</body></html>"#
+                            .to_string(),
+                    ),
+                    "/posts.xml" => Some(feed("Blog posts")),
+                    "/comments.xml" => Some(feed("Comments for Blog")),
+                    _ => None,
+                };
+                let response = match body {
+                    Some(body) => format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    ),
+                    None => {
+                        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            .to_string()
+                    }
+                };
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+
+        format!("http://{address}")
+    }
+
+    /// Previewing a web page finds its real feed (skipping the comments feed
+    /// listed first) and says how; previewing the feed address itself is used
+    /// as it is.
+    #[tokio::test]
+    async fn preview_finds_the_feed_for_a_page() {
+        let site = serve_blog();
+
+        // A page address: the posts feed is found through the page's link.
+        let preview = preview_feed(format!("{site}/")).await.unwrap();
+        assert_eq!(preview.url, format!("{site}/posts.xml"));
+        assert_eq!(preview.found_by, FoundBy::Advertised);
+        assert_eq!(preview.title, "Blog posts");
+        assert_eq!(preview.entry_count, 1);
+
+        // The feed's own address is kept as typed.
+        let direct = preview_feed(format!("{site}/posts.xml")).await.unwrap();
+        assert_eq!(direct.url, format!("{site}/posts.xml"));
+        assert_eq!(direct.found_by, FoundBy::Direct);
     }
 
     // -- database tests ------------------------------------------------------
