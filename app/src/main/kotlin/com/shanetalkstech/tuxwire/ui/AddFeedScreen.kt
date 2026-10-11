@@ -62,6 +62,9 @@ fun AddFeedScreen(
     var topic by rememberSaveable { mutableStateOf(startTopic) }
     var status by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    // True once the feed has been saved, so it cannot be saved a second time
+    // while the form is still open (for example after a failed first download).
+    var saved by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     // The topics that already exist, offered below the topic box so a tap
@@ -70,8 +73,8 @@ fun AddFeedScreen(
         value = runCatching { onIo { db.listTopics() } }.getOrDefault(emptyList())
     }
 
-    // Saving needs all three boxes filled in.
-    val canSave = !busy && url.isNotBlank() && name.isNotBlank() && topic.isNotBlank()
+    // Saving needs all three boxes filled in, and only works once.
+    val canSave = !busy && !saved && url.isNotBlank() && name.isNotBlank() && topic.isNotBlank()
 
     // Finds the feed for the address in the box and fills in the details. It is a
     // local function (a value holding a block of code) because two things run
@@ -132,17 +135,57 @@ fun AddFeedScreen(
                     onClick = {
                         busy = true
                         scope.launch {
+                            // The address exactly as it will be stored. The same
+                            // text is used to save the feed and then to fetch it.
+                            val address = normalisedFeedUrl(url)
+
+                            // Step 1: save the feed on a background thread. A
+                            // failure here (for example "this feed is already
+                            // added") stops everything and is shown in red.
                             try {
-                                // Save on a background thread, then leave the form.
-                                onIo { db.addFeed(name, normalisedFeedUrl(url), topic) }
-                                onDone()
+                                onIo { db.addFeed(name, address, topic) }
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (t: Throwable) {
-                                // For example "this feed is already added".
                                 status = "error: ${t.explain()}"
-                            } finally {
                                 busy = false
+                                return@launch
+                            }
+
+                            // Step 2: the feed is saved, so a second tap on "save"
+                            // must not try to add it again. Download its articles
+                            // now, so the person never sees a freshly added feed
+                            // with nothing in it and thinks the app is broken.
+                            saved = true
+                            status = "saved. downloading articles..."
+
+                            // `problem` is `null` when all went well, otherwise a
+                            // short reason. A failed download is reported in the
+                            // summary (`failed`); a thrown error is caught too.
+                            // The feed stays saved either way.
+                            val problem: String? = try {
+                                val summary = db.refreshFeed(address)
+                                if (summary.failed > 0u) {
+                                    summary.messages.firstOrNull() ?: "the download failed"
+                                } else {
+                                    null
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (t: Throwable) {
+                                t.explain()
+                            }
+                            busy = false
+
+                            // Step 3: on success leave the form. On a problem, stay
+                            // and say so (the feed's articles arrive on the next
+                            // refresh), because leaving would hide the message.
+                            if (problem == null) {
+                                onDone()
+                            } else {
+                                status = "saved, but its articles could not be " +
+                                    "downloaded yet ($problem). They will arrive " +
+                                    "on the next refresh."
                             }
                         }
                     },
@@ -170,7 +213,11 @@ fun AddFeedScreen(
                 if (status.isNotEmpty()) {
                     MonoText(
                         text = status,
-                        color = if (status.startsWith("error")) colors.accentBreaking else colors.textMuted,
+                        color = if (status.startsWith("error") || status.startsWith("saved, but")) {
+                            colors.accentBreaking
+                        } else {
+                            colors.textMuted
+                        },
                     )
                 }
             }
