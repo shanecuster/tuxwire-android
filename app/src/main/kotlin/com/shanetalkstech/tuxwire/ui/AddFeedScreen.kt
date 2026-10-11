@@ -21,12 +21,14 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import uniffi.tuxwire_ffi.Database
+import uniffi.tuxwire_ffi.FoundBy
 import uniffi.tuxwire_ffi.TopicInfo
 import uniffi.tuxwire_ffi.previewFeed
 
 /**
- * The add-feed form: type an address, tap "check" to download it and fill in
- * the feed's own title, choose or type a topic, then "save".
+ * The add-feed form: type a feed address, or just a blog's address, tap "check"
+ * to find and download the feed and fill in its own title, choose or type a
+ * topic, then "save".
  *
  * Checking first means a typo is caught here, with a clear message, instead of
  * as a feed that silently never works.
@@ -105,7 +107,7 @@ fun AddFeedScreen(
         ) {
             TuiPanel(title = "feed") {
                 TuiField(
-                    label = "address",
+                    label = "feed or page address",
                     value = url,
                     onValueChange = { url = it },
                     keyboardType = KeyboardType.Uri,
@@ -118,12 +120,26 @@ fun AddFeedScreen(
                         status = "checking..."
                         scope.launch {
                             try {
-                                // Download and read the feed. If it works we learn its
-                                // own title and how many articles it has.
-                                val preview = previewFeed(normalisedFeedUrl(url))
+                                // Find the feed for what was typed (a feed address, or a
+                                // web page that has a feed), then download and read it.
+                                // If it works we learn its own title and how many
+                                // articles it has. Core adds "https://" when no scheme
+                                // was typed, so the text is passed on as it is.
+                                val preview = previewFeed(url.trim())
+                                // The feed may live at a different address than the page
+                                // that was typed. Put the real one in the box, so what
+                                // is saved is exactly what the person can see.
+                                url = preview.url
                                 // Only suggest a name if the person has not typed one.
                                 if (name.isBlank()) name = preview.title
-                                status = "found: ${preview.title} (${preview.entryCount} articles)"
+                                // Say how it was found when it was not typed directly,
+                                // so a changed address is never a surprise.
+                                val how = when (preview.foundBy) {
+                                    FoundBy.DIRECT -> ""
+                                    FoundBy.ADVERTISED -> "\nfound through the page's own feed link"
+                                    FoundBy.GUESSED -> "\nthe page lists no feed; found one at a common address"
+                                }
+                                status = "found: ${preview.title} (${preview.entryCount} articles)$how"
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (t: Throwable) {
