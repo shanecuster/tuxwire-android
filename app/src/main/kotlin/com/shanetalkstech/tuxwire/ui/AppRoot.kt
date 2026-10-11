@@ -229,6 +229,7 @@ fun AppRoot() {
                         is Screen.AddFeed -> AddFeedScreen(
                             db = db,
                             startTopic = screen.topic,
+                            onHome = goHome,
                             onBack = pop,
                             onDone = pop,
                         )
