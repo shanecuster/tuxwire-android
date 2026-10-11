@@ -49,6 +49,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use tuxwire_core::fetch_report::FetchReport;
 use tuxwire_core::fetchers::{SourceType, configured_sources, fetch_all};
 use tuxwire_core::models::Article;
+use tuxwire_core::opml::{parse_opml, write_opml};
 use tuxwire_core::storage::{Feed, Scope, Storage};
 use tuxwire_core::theme::{BUILTIN_THEMES, DEFAULT_THEME, Palette, Rgb, picker_order};
 
@@ -292,6 +293,19 @@ pub struct ArticleInfo {
     /// straight to the browser. (The summary text itself is fetched only when
     /// the summary screen opens, so long lists stay light.)
     pub has_summary: bool,
+}
+
+/// What an OPML import did, for the message shown to the person.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct OpmlReport {
+    /// Feeds that were new and have been added.
+    pub added: u32,
+    /// Feeds skipped because they were already in the list (including repeats
+    /// inside the file itself).
+    pub already_there: u32,
+    /// Entries skipped because they could not be used (for example an address
+    /// that is not `http` or `https`).
+    pub ignored: u32,
 }
 
 /// One article in full, for the summary screen.
@@ -577,6 +591,57 @@ impl Database {
     pub fn remove_feed(&self, id: i64) -> Result<bool, FfiError> {
         let storage = self.lock()?;
         Ok(storage.remove_feed(id)?)
+    }
+
+    /// Adds every usable feed from the text of an OPML file and says what
+    /// happened. Feeds already in the list are left alone. A file that is not
+    /// OPML, or is too big or damaged, fails with a readable message and adds
+    /// nothing.
+    pub fn import_opml(&self, text: String) -> Result<OpmlReport, FfiError> {
+        // Step 1: read the file *before* touching the database, so a bad file
+        // changes nothing.
+        let import = parse_opml(&text)?;
+
+        // Step 2: remember which addresses are already stored (lower-cased, to
+        // match how the reader compares them).
+        let storage = self.lock()?;
+        let mut known: std::collections::HashSet<String> = storage
+            .list_feeds()?
+            .into_iter()
+            .map(|feed| feed.url.to_ascii_lowercase())
+            .collect();
+
+        // Step 3: add the new ones, counting as we go.
+        let mut added = 0u32;
+        let mut already_there = import.repeated as u32;
+        for feed in &import.feeds {
+            // `insert` returns `false` if the address was already in the set.
+            if !known.insert(feed.url.to_ascii_lowercase()) {
+                already_there += 1;
+                continue;
+            }
+            storage.add_feed(&feed.name, &feed.url, &feed.topic, feed.source_type)?;
+            added += 1;
+        }
+        Ok(OpmlReport {
+            added,
+            already_there,
+            ignored: import.ignored as u32,
+        })
+    }
+
+    /// Every feed written out as the text of an OPML file, ready to be saved
+    /// to a file the person chose.
+    pub fn export_opml(&self) -> Result<String, FfiError> {
+        let storage = self.lock()?;
+        // Convert each stored feed to the shared `SourceConfig` shape the
+        // writer takes.
+        let sources: Vec<_> = storage
+            .list_feeds()?
+            .iter()
+            .map(|feed| feed.to_source_config())
+            .collect();
+        Ok(write_opml(&sources))
     }
 
     /// The articles from one feed, newest first.
@@ -1015,6 +1080,89 @@ mod tests {
         assert!(db.article_detail(99999).is_err());
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A small OPML file used by the import tests: two feeds in a folder, one
+    /// outside any folder, and one unusable address.
+    const SAMPLE_OPML: &str = r#"<?xml version="1.0"?>
+<opml version="2.0"><body>
+  <outline text="Linux">
+    <outline text="LWN" xmlUrl="https://lwn.example/rss"/>
+    <outline text="Arch &amp; Co" xmlUrl="https://arch.example/rss"/>
+  </outline>
+  <outline text="Loose" xmlUrl="https://loose.example/rss"/>
+  <outline text="Bad" xmlUrl="javascript:alert(1)"/>
+</body></opml>"#;
+
+    /// Importing adds new feeds under their folders, files loose ones as
+    /// "Uncategorized", and reports the counts; importing again adds nothing.
+    #[test]
+    fn opml_import_adds_feeds_and_reports_counts() {
+        let (db, dir) = temp_database();
+
+        let first = db.import_opml(SAMPLE_OPML.to_string()).unwrap();
+        assert_eq!(
+            first,
+            OpmlReport {
+                added: 3,
+                already_there: 0,
+                ignored: 1
+            }
+        );
+        let topics: Vec<String> = db
+            .list_topics()
+            .unwrap()
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        assert_eq!(topics, ["Linux", "Uncategorized"]);
+
+        // The same file again: everything usable is already there.
+        let second = db.import_opml(SAMPLE_OPML.to_string()).unwrap();
+        assert_eq!(
+            second,
+            OpmlReport {
+                added: 0,
+                already_there: 3,
+                ignored: 1
+            }
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A file that is not OPML is a readable error and adds nothing.
+    #[test]
+    fn opml_import_of_a_bad_file_changes_nothing() {
+        let (db, dir) = temp_database();
+        assert!(db.import_opml("<html></html>".to_string()).is_err());
+        assert!(db.list_topics().unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Exporting writes every feed, and importing that text into a fresh
+    /// database gives back the same feeds and topics.
+    #[test]
+    fn opml_export_then_import_round_trips() {
+        let (db, dir) = temp_database();
+        db.import_opml(SAMPLE_OPML.to_string()).unwrap();
+        let text = db.export_opml().unwrap();
+        assert!(text.contains("Arch &amp; Co"));
+
+        let (other, other_dir) = temp_database();
+        let report = other.import_opml(text).unwrap();
+        assert_eq!(report.added, 3);
+        let names: Vec<String> = other
+            .list_all_feeds()
+            .unwrap()
+            .into_iter()
+            .map(|f| f.name)
+            .collect();
+        // Alphabetical ignoring case: "Loose" sorts before "LWN" (o before w).
+        assert_eq!(names, ["Arch & Co", "Loose", "LWN"]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&other_dir);
     }
 
     /// A feed that cannot be reached is reported, not fatal: the summary says

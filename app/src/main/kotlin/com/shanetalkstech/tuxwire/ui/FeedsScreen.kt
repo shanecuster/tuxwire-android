@@ -50,6 +50,7 @@ import uniffi.tuxwire_ffi.FeedInfo
  * @param onBack goes back one screen (topic page only).
  * @param onOpenFeed called with the tapped feed.
  * @param onOpenTopic called with a topic's name when a topic label is tapped.
+ * @param onOpenOpml opens the import / export screen (home only).
  * @param onAddFeed called when "+ add feed" is tapped.
  */
 @Composable
@@ -63,6 +64,7 @@ fun FeedsScreen(
     onBack: () -> Unit,
     onOpenFeed: (FeedInfo) -> Unit,
     onOpenTopic: (String) -> Unit,
+    onOpenOpml: () -> Unit,
     onAddFeed: () -> Unit,
 ) {
     val colors = LocalTuxwireColors.current
@@ -100,16 +102,29 @@ fun FeedsScreen(
         top = {
             if (topic == null) {
                 Banner(color = bannerColor)
-                MonoText(
-                    text = "theme: $themeName",
-                    color = colors.textMuted,
-                    size = 12.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onCycleTheme)
-                        .padding(vertical = 6.dp),
-                    centered = true,
-                )
+                // One small line of rarely used controls: the theme switcher
+                // on the left, import / export on the right.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    MonoText(
+                        text = "theme: $themeName",
+                        color = colors.textMuted,
+                        size = 12.sp,
+                        modifier = Modifier
+                            .clickable(onClick = onCycleTheme)
+                            .padding(vertical = 6.dp),
+                    )
+                    MonoText(
+                        text = "import / export",
+                        color = colors.textMuted,
+                        size = 12.sp,
+                        modifier = Modifier
+                            .clickable(onClick = onOpenOpml)
+                            .padding(vertical = 6.dp),
+                    )
+                }
             } else {
                 TopBar(path = "tuxwire / $topic", onHome = onHome)
             }

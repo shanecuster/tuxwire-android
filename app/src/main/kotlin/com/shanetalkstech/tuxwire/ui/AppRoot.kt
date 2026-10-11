@@ -177,7 +177,14 @@ fun AppRoot() {
                             onBack = pop,
                             onOpenFeed = { push(Screen.Articles(it.topic, it.name, it.url)) },
                             onOpenTopic = { push(Screen.Feeds(it)) },
+                            onOpenOpml = { push(Screen.Opml) },
                             onAddFeed = { push(Screen.AddFeed("")) },
+                        )
+                        // Import and export of feed lists.
+                        Screen.Opml -> OpmlScreen(
+                            db = db,
+                            onHome = goHome,
+                            onBack = pop,
                         )
                         // One topic's feeds.
                         is Screen.Feeds -> FeedsScreen(
@@ -190,6 +197,7 @@ fun AppRoot() {
                             onBack = pop,
                             onOpenFeed = { push(Screen.Articles(screen.topic, it.name, it.url)) },
                             onOpenTopic = {},
+                            onOpenOpml = {},
                             onAddFeed = { push(Screen.AddFeed(screen.topic)) },
                         )
                         is Screen.Articles -> ArticlesScreen(
