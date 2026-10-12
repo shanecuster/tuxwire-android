@@ -2,7 +2,9 @@ package com.shanetalkstech.tuxwire.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -13,6 +15,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -60,6 +63,9 @@ fun ArticlesScreen(
     // IDs of articles tapped on this screen. They are drawn as read at once,
     // without waiting for the list to reload from the database.
     var readNow by remember { mutableStateOf(setOf<Long>()) }
+
+    // The same idea for articles saved from this list: drawn as saved at once.
+    var savedNow by remember { mutableStateOf(setOf<Long>()) }
 
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
@@ -112,31 +118,60 @@ fun ArticlesScreen(
             else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(loaded.getOrThrow(), key = { it.id }) { article ->
                     val isRead = article.read || article.id in readNow
-                    TuiRow(
-                        onClick = {
-                            // Show it as read straight away, then save that
-                            // in the background. The save finishes before we
-                            // move on so the list is right when we come back.
-                            readNow = readNow + article.id
-                            scope.launch {
-                                runCatching { onIo { db.markRead(article.id) } }
-                                if (article.hasSummary) {
-                                    onOpenArticle(article.id)
-                                } else if (!openInBrowser(context, article.url)) {
-                                    message = "could not open this address"
-                                }
-                            }
-                        },
+                    val isSaved = article.saved || article.id in savedNow
+                    // The article on the left, its save button on the right.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        // A leading "*" marks unread articles in plain text.
-                        MonoText(
-                            text = (if (isRead) "  " else "* ") + article.title,
-                            color = if (isRead) colors.accentRead else colors.accentUnread,
-                            bold = !isRead,
-                        )
-                        MonoText(
-                            text = "  " + formatPublished(article.published),
-                            color = colors.textMuted,
+                        Column(modifier = Modifier.weight(1f)) {
+                            TuiRow(
+                                onClick = {
+                                    // Show it as read straight away, then save that
+                                    // in the background. The save finishes before we
+                                    // move on so the list is right when we come back.
+                                    readNow = readNow + article.id
+                                    scope.launch {
+                                        runCatching { onIo { db.markRead(article.id) } }
+                                        if (article.hasSummary) {
+                                            onOpenArticle(article.id)
+                                        } else if (!openInBrowser(context, article.url)) {
+                                            message = "could not open this address"
+                                        }
+                                    }
+                                },
+                            ) {
+                                // A leading "*" marks unread articles in plain text.
+                                MonoText(
+                                    text = (if (isRead) "  " else "* ") + article.title,
+                                    color = if (isRead) colors.accentRead else colors.accentUnread,
+                                    bold = !isRead,
+                                )
+                                MonoText(
+                                    text = "  " + formatPublished(article.published),
+                                    color = colors.textMuted,
+                                )
+                            }
+                        }
+                        // Saves the article for good (add a note later from its
+                        // page or from the Saved list). Dim once saved.
+                        TuiButton(
+                            label = if (isSaved) "saved" else "save",
+                            enabled = !isSaved,
+                            onClick = {
+                                savedNow = savedNow + article.id
+                                scope.launch {
+                                    try {
+                                        onIo { db.saveArticle(article.id) }
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (t: Throwable) {
+                                        // It did not save: undo the early "saved" look.
+                                        savedNow = savedNow - article.id
+                                        message = "error: ${t.explain()}"
+                                    }
+                                }
+                            },
                         )
                     }
                 }

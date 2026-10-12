@@ -172,6 +172,9 @@ fun OpmlScreen(
                     onClick = { exportLauncher.launch("tuxwire-feeds.opml") },
                 )
             }
+            // Saved articles and notes, as one Markdown file. The same panel is on
+            // the Saved screen; it is here too so every export is in one place.
+            NotesExportPanel(db = db)
         }
     }
 }
@@ -221,8 +224,11 @@ private fun readLimitedText(context: Context, uri: Uri): String {
     }
 }
 
-/** Writes [text] to the file at [uri], replacing whatever it held. */
-private fun writeText(context: Context, uri: Uri, text: String) {
+/**
+ * Writes [text] to the file at [uri], replacing whatever it held. (`internal`
+ * so the notes export can use it too.)
+ */
+internal fun writeText(context: Context, uri: Uri, text: String) {
     // The "wt" mode means write, and truncate (empty) the file first.
     val output = context.contentResolver.openOutputStream(uri, "wt")
         ?: throw IllegalStateException("could not write to that file")

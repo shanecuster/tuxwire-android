@@ -17,6 +17,13 @@ feed accepts a blog's address as well as a feed address: tuxwire finds the feed
 sharing a page from the browser opens the add-feed form with it already checked.
 Saving a new feed downloads its articles straight away, so it never looks empty.
 Importing an OPML file does the same once, for all the feeds it added.
+Every article has a **save** button, and its page lets you add, edit or delete a
+note. Saved articles are permanent (there is no un-save), and notes can be
+deleted. **Saved articles & notes**, on the home screen, lists them all, notes
+first, with a search and a notes-only filter. The same screen (and the import /
+export screen) can save everything to one Markdown file through Android's file
+picker, so it can go to Google Drive if you choose that. A switch leaves out
+saved articles that have no note.
 
 ## How it fits together
 

@@ -160,3 +160,46 @@ fun TuiField(
         )
     }
 }
+
+/**
+ * A labelled, multi-line text box drawn with a plain border, for longer text
+ * such as a note. It starts [minLines] lines tall and grows as the person types.
+ *
+ * @param label small caption shown above the box.
+ * @param value the current text (the screen owns it).
+ * @param onValueChange called with the new text whenever the person types.
+ * @param modifier optional layout tweaks.
+ * @param minLines how many lines tall the box is when empty.
+ */
+@Composable
+fun TuiTextArea(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    minLines: Int = 6,
+) {
+    val colors = LocalTuxwireColors.current
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        MonoText(label, colors.textMuted, size = 12.sp)
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            // Unlike `TuiField`, Enter starts a new line instead of finishing.
+            singleLine = false,
+            minLines = minLines,
+            textStyle = TextStyle(
+                color = colors.textPrimary,
+                fontFamily = MonoFont,
+                fontSize = 13.sp,
+                fontFeatureSettings = NO_LIGATURES,
+            ),
+            cursorBrush = SolidColor(colors.accentSelected),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, colors.textDim)
+                .padding(8.dp),
+        )
+    }
+}

@@ -51,6 +51,7 @@ import uniffi.tuxwire_ffi.FeedInfo
  * @param onOpenFeed called with the tapped feed.
  * @param onOpenTopic called with a topic's name when a topic label is tapped.
  * @param onOpenOpml opens the import / export screen (home only).
+ * @param onOpenSaved opens the saved articles and notes screen (home only).
  * @param onAddFeed called when "+ add feed" is tapped.
  */
 @Composable
@@ -65,6 +66,7 @@ fun FeedsScreen(
     onOpenFeed: (FeedInfo) -> Unit,
     onOpenTopic: (String) -> Unit,
     onOpenOpml: () -> Unit,
+    onOpenSaved: () -> Unit,
     onAddFeed: () -> Unit,
 ) {
     val colors = LocalTuxwireColors.current
@@ -125,6 +127,19 @@ fun FeedsScreen(
                             .padding(vertical = 6.dp),
                     )
                 }
+                // The way in to saved articles and notes, kept on its own line so
+                // it is easy to find.
+                MonoText(
+                    text = "saved articles & notes",
+                    color = colors.accentSaved,
+                    size = 12.sp,
+                    bold = true,
+                    centered = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpenSaved)
+                        .padding(vertical = 6.dp),
+                )
             } else {
                 TopBar(path = "tuxwire / $topic", onHome = onHome)
             }
