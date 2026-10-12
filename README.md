@@ -26,6 +26,12 @@ first, with a search and a notes-only filter. The same screen (and the import /
 export screen) can save everything to one Markdown file through Android's file
 picker, so it can go to Google Drive if you choose that. A switch leaves out
 saved articles that have no note.
+**Sync** (home screen, optional) copies saved articles and notes to a CouchDB
+server you run yourself, so your devices share them. It is off until you turn
+it on and save; it only runs when you tap **sync now**; read/unread is not
+synced. The address must be `https://` (plain `http://` only for this device),
+and the password is stored encrypted with the Android Keystore, never in plain
+text. **forget everything** (asks first) wipes the saved settings.
 
 ## How it fits together
 

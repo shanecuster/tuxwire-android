@@ -13,8 +13,8 @@ import androidx.compose.runtime.saveable.Saver
  * feeds, reached by tapping a topic label), then Articles (one feed's
  * articles), then Article (one article's summary). [AddFeed] opens on top of
  * either of the first two, so it never sits beside [Article] in the stack and
- * the two can share a depth. [Opml] (import and export) and [Saved] (saved
- * articles and notes) open from home; an article opened from [Saved] goes to
+ * the two can share a depth. [Opml] (import and export), [Sync] (optional
+ * sync settings) and [Saved] (saved articles and notes) open from home; an article opened from [Saved] goes to
  * [Article] directly.
  *
  * @property depth how far "to the right" this screen sits. Used to slide
@@ -30,6 +30,9 @@ sealed class Screen(val depth: Int) {
 
     /** Saved articles and notes. */
     data object Saved : Screen(1)
+
+    /** The optional sync settings. */
+    data object Sync : Screen(1)
 
     /** The feeds filed under [topic]. */
     data class Feeds(val topic: String) : Screen(1)
@@ -60,6 +63,7 @@ sealed class Screen(val depth: Int) {
         Home -> "T"
         Opml -> "O"
         Saved -> "S"
+        Sync -> "Y"
         is Feeds -> listOf("F", topic).joinToString(SEPARATOR)
         is Articles -> listOf("A", topic, feedName, feedUrl).joinToString(SEPARATOR)
         is Article -> listOf("R", topic, feedName, feedUrl, articleId.toString())
@@ -84,6 +88,7 @@ sealed class Screen(val depth: Int) {
             return when (parts[0]) {
                 "O" -> Opml
                 "S" -> Saved
+                "Y" -> Sync
                 "F" -> Feeds(parts.getOrElse(1) { "" })
                 "A" -> Articles(
                     parts.getOrElse(1) { "" },

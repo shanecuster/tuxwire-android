@@ -52,6 +52,7 @@ import uniffi.tuxwire_ffi.FeedInfo
  * @param onOpenTopic called with a topic's name when a topic label is tapped.
  * @param onOpenOpml opens the import / export screen (home only).
  * @param onOpenSaved opens the saved articles and notes screen (home only).
+ * @param onOpenSync opens the optional sync settings (home only).
  * @param onAddFeed called when "+ add feed" is tapped.
  */
 @Composable
@@ -67,6 +68,7 @@ fun FeedsScreen(
     onOpenTopic: (String) -> Unit,
     onOpenOpml: () -> Unit,
     onOpenSaved: () -> Unit,
+    onOpenSync: () -> Unit,
     onAddFeed: () -> Unit,
 ) {
     val colors = LocalTuxwireColors.current
@@ -124,6 +126,16 @@ fun FeedsScreen(
                         size = 12.sp,
                         modifier = Modifier
                             .clickable(onClick = onOpenOpml)
+                            .padding(vertical = 6.dp),
+                    )
+                    // Optional sync, tucked in with the other rarely used
+                    // settings. Off until the person turns it on there.
+                    MonoText(
+                        text = "sync",
+                        color = colors.textMuted,
+                        size = 12.sp,
+                        modifier = Modifier
+                            .clickable(onClick = onOpenSync)
                             .padding(vertical = 6.dp),
                     )
                 }

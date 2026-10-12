@@ -195,10 +195,17 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                             onOpenTopic = { push(Screen.Feeds(it)) },
                             onOpenOpml = { push(Screen.Opml) },
                             onOpenSaved = { push(Screen.Saved) },
+                            onOpenSync = { push(Screen.Sync) },
                             onAddFeed = { push(Screen.AddFeed("")) },
                         )
                         // Import and export of feed lists.
                         Screen.Opml -> OpmlScreen(
+                            db = db,
+                            onHome = goHome,
+                            onBack = pop,
+                        )
+                        // Optional CouchDB sync settings (off by default).
+                        Screen.Sync -> SyncScreen(
                             db = db,
                             onHome = goHome,
                             onBack = pop,
@@ -226,6 +233,7 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                             onOpenTopic = {},
                             onOpenOpml = {},
                             onOpenSaved = {},
+                            onOpenSync = {},
                             onAddFeed = { push(Screen.AddFeed(screen.topic)) },
                         )
                         is Screen.Articles -> ArticlesScreen(
