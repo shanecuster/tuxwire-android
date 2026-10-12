@@ -53,6 +53,7 @@ use tuxwire_core::fetchers::{SourceType, configured_sources, fetch_all};
 use tuxwire_core::models::Article;
 use tuxwire_core::opml::{parse_opml, write_opml};
 use tuxwire_core::storage::{Feed, Scope, Storage};
+use tuxwire_core::sync::SyncConfig;
 use tuxwire_core::theme::{BUILTIN_THEMES, DEFAULT_THEME, Palette, Rgb, picker_order};
 
 // ---------------------------------------------------------------------------
@@ -826,6 +827,15 @@ impl Database {
         let storage = self.lock()?;
         Ok(storage.set_setting(&key, &value)?)
     }
+
+    /// Forgets which server changes were already seen and which articles were
+    /// already sent, so the next sync starts from scratch. Used when the person
+    /// points sync at a different server or database. Saved articles and notes
+    /// on this device are not touched.
+    pub fn reset_sync_state(&self) -> Result<(), FfiError> {
+        let storage = self.lock()?;
+        Ok(storage.reset_sync_state()?)
+    }
 }
 
 /// The two network-using methods. They are `async`, so UniFFI turns them into
@@ -858,6 +868,48 @@ impl Database {
         };
         self.refresh(feeds).await
     }
+
+    /// Runs one optional CouchDB sync of saved articles and notes and returns a
+    /// one-line summary such as "2 sent, 1 received".
+    ///
+    /// Kotlin passes the settings in on every call and keeps the password
+    /// encrypted on its side; this crate never stores any of it. `enabled` is
+    /// the on/off switch: while it is `false`, core refuses to touch the
+    /// network, so a bug in the screen cannot make sync run by accident.
+    /// Error text comes from core's fixed phrases and never contains the
+    /// address or the password.
+    pub async fn sync_now(
+        &self,
+        enabled: bool,
+        url: String,
+        database: String,
+        username: String,
+        password: String,
+    ) -> Result<String, FfiError> {
+        // Build the settings object. The password is moved into it and is
+        // hidden from `Debug` output.
+        let config = SyncConfig::new(enabled, url, database, username, password);
+        // `&self.storage` is the lock itself: core takes it only briefly, and
+        // never holds it while waiting on the network.
+        let report = tuxwire_core::sync::sync_now(&self.storage, &config).await?;
+        Ok(report.summary())
+    }
+}
+
+/// Checks a server, database and login without reading or writing any
+/// articles. Free-standing (not tied to a `Database`) because it works before
+/// sync is switched on, and needs nothing from the database.
+#[uniffi::export(async_runtime = "tokio")]
+pub async fn sync_test_connection(
+    url: String,
+    database: String,
+    username: String,
+    password: String,
+) -> Result<(), FfiError> {
+    // `enabled` is true here only so the settings object is complete; core's
+    // test ignores it by design.
+    let config = SyncConfig::new(true, url, database, username, password);
+    Ok(tuxwire_core::sync::test_connection(&config).await?)
 }
 
 // ---------------------------------------------------------------------------
@@ -1478,6 +1530,50 @@ mod tests {
         // Clearing a note on an article that is not saved saves nothing.
         db.set_note(second, None).unwrap();
         assert!(!db.article_detail(second).unwrap().saved);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Sync is safe by default: with the switch off, `sync_now` refuses before
+    /// any network use; a plain-http address to another machine and an address
+    /// with a login inside it are both refused with plain sentences that do not
+    /// repeat the address or the password; and resetting the sync state leaves
+    /// saved articles and notes alone.
+    #[tokio::test]
+    async fn sync_refuses_unsafe_or_switched_off_settings() {
+        let (db, first, _second, dir) = database_with_two_articles().await;
+        db.save_article(first).unwrap();
+
+        // Switched off: refused, even with otherwise valid settings.
+        let off = db
+            .sync_now(
+                false,
+                "https://couch.invalid".into(),
+                "tuxwire".into(),
+                "user".into(),
+                "secret-pass".into(),
+            )
+            .await;
+        assert!(off.is_err());
+
+        // Plain http to another machine, and a login inside the address.
+        for bad in ["http://couch.invalid", "https://user:pw@couch.invalid"] {
+            let err = sync_test_connection(
+                bad.into(),
+                "tuxwire".into(),
+                "user".into(),
+                "secret-pass".into(),
+            )
+            .await
+            .unwrap_err()
+            .to_string();
+            assert!(!err.contains("secret-pass"), "password leaked: {err}");
+            assert!(!err.contains("couch.invalid"), "address leaked: {err}");
+        }
+
+        // Resetting the bookkeeping keeps the save.
+        db.reset_sync_state().unwrap();
+        assert_eq!(db.list_saved_articles().unwrap().len(), 1);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
