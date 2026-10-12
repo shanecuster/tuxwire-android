@@ -30,13 +30,18 @@ import uniffi.tuxwire_ffi.Database
  * there is one) and the summary text. The bottom bar holds the actions.
  *
  * What can be done here:
- * - **save** keeps the article for good. Saved articles are permanent, as in
- *   the terminal app, so there is deliberately no "un-save".
+ * - **save** keeps the article. Once it is saved the same button reads
+ *   **un-save**, which always asks first. A note and a save are locked
+ *   together: if the article has a note, the question says that un-saving
+ *   also deletes the note, and cancelling explains that the note keeps the
+ *   article saved.
  * - **add note / edit note** opens a text box. "save note" stores it (and
  *   saves the article if it was not saved yet); "cancel" throws the typing
  *   away and changes nothing. Saving an empty box clears the note.
  * - **delete note** (shown while editing a note that exists) asks first, then
  *   removes the note. The article stays saved.
+ *
+ * Nothing is deleted without a question that has to be answered "yes".
  * - **open in browser** opens the full article.
  *
  * The top bar (home button and breadcrumb) and the bottom bars stay put while
@@ -82,6 +87,11 @@ fun ArticleScreen(
     var draft by rememberSaveable { mutableStateOf("") }
     // True while the "delete this note?" question is showing.
     var confirmingDelete by rememberSaveable { mutableStateOf(false) }
+    // True while the "un-save?" question is showing.
+    var confirmingUnsave by rememberSaveable { mutableStateOf(false) }
+    // A plain, non-error line telling the person what just happened or what
+    // was left alone (for example "kept: the note keeps it saved").
+    var notice by remember { mutableStateOf("") }
     // True while a save is running, so a button cannot be tapped twice.
     var busy by remember { mutableStateOf(false) }
 
@@ -95,6 +105,7 @@ fun ArticleScreen(
     fun act(work: suspend () -> Unit) {
         scope.launch {
             busy = true
+            notice = ""
             try {
                 work()
                 message = ""
@@ -115,6 +126,7 @@ fun ArticleScreen(
         bottom = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (message.isNotEmpty()) MonoText(message, colors.accentBreaking)
+                if (notice.isNotEmpty()) MonoText(notice, colors.textMuted)
 
                 // The question before a note is deleted.
                 if (confirmingDelete) {
@@ -128,10 +140,64 @@ fun ArticleScreen(
                                     act {
                                         onIo { db.setNote(articleId, null) }
                                         editing = false
+                                        notice = "note deleted; the article stays saved"
                                     }
                                 },
                             )
-                            TuiButton(label = "cancel", onClick = { confirmingDelete = false })
+                            TuiButton(
+                                label = "cancel",
+                                onClick = {
+                                    confirmingDelete = false
+                                    notice = "note kept"
+                                },
+                            )
+                        }
+                    }
+                }
+
+                // The question before an article is un-saved. With a note the
+                // wording is stronger, because the note goes too.
+                if (confirmingUnsave) {
+                    val hasNote = article?.note != null
+                    TuiPanel(title = "un-save?") {
+                        MonoText(
+                            if (hasNote) {
+                                "This article has a note. A note and a save go together, " +
+                                    "so un-saving also DELETES the note. " +
+                                    "Remove the save and delete the note?"
+                            } else {
+                                "Remove this article from Saved?"
+                            },
+                            colors.textPrimary,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            TuiButton(
+                                label = "yes, un-save",
+                                onClick = {
+                                    confirmingUnsave = false
+                                    act {
+                                        onIo { db.unsaveArticle(articleId) }
+                                        editing = false
+                                        notice = if (hasNote) {
+                                            "un-saved, and its note was deleted"
+                                        } else {
+                                            "un-saved"
+                                        }
+                                    }
+                                },
+                            )
+                            TuiButton(
+                                label = "cancel",
+                                onClick = {
+                                    confirmingUnsave = false
+                                    notice = if (hasNote) {
+                                        "kept saved: an article with a note stays in Saved. " +
+                                            "Delete the note first, or un-save and confirm to remove both"
+                                    } else {
+                                        "kept: still saved"
+                                    }
+                                },
+                            )
                         }
                     }
                 }
@@ -153,7 +219,10 @@ fun ArticleScreen(
                             TuiButton(
                                 label = "delete note",
                                 enabled = !busy,
-                                onClick = { confirmingDelete = true },
+                                onClick = {
+                                    confirmingUnsave = false
+                                    confirmingDelete = true
+                                },
                             )
                         }
                         TuiButton(label = "cancel", onClick = { editing = false })
@@ -161,11 +230,20 @@ fun ArticleScreen(
                 } else {
                     // Reading: save the article, or add or edit its note.
                     BottomBar {
+                        // One button for both directions: "save" before, "un-save"
+                        // after. Un-saving never happens straight away; it opens
+                        // the question above.
                         TuiButton(
-                            label = if (article?.saved == true) "saved" else "save",
-                            // Dim once saved, since saving is permanent.
-                            enabled = article != null && !article.saved && !busy,
-                            onClick = { act { onIo { db.saveArticle(articleId) } } },
+                            label = if (article?.saved == true) "un-save" else "save",
+                            enabled = article != null && !busy,
+                            onClick = {
+                                if (article?.saved == true) {
+                                    confirmingDelete = false
+                                    confirmingUnsave = true
+                                } else {
+                                    act { onIo { db.saveArticle(articleId) } }
+                                }
+                            },
                         )
                         TuiButton(
                             label = if (article?.note != null) "edit note" else "add note",

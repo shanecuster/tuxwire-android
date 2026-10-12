@@ -746,41 +746,55 @@ impl Database {
     /// Saves an article (with no note). Saving also marks it read.
     ///
     /// Saving an article that is already saved does nothing, so the date it
-    /// was first saved is kept. Saved articles are permanent: there is
-    /// deliberately no way to un-save one, the same as in the terminal app.
-    /// Fails with a readable message if no article has this ID.
+    /// was first saved is kept and an existing note is not wiped. To take a
+    /// save away again, see [`Database::unsave_article`]. Fails with a
+    /// readable message if no article has this ID.
     pub fn save_article(&self, id: i64) -> Result<(), FfiError> {
         let storage = self.lock()?;
         let article = Self::existing_article(&storage, id)?;
+        // Only save when it is not saved yet: `Storage::save_article` also
+        // sets the note, so calling it on a saved article would clear a note.
         if !article.saved {
             storage.save_article(id, None)?;
         }
         Ok(())
     }
 
+    /// Takes an article out of Saved: the opposite of [`Database::save_article`].
+    ///
+    /// A note and a save are locked together, so this also deletes the
+    /// article's note. The screen must therefore ask the person to confirm
+    /// before calling it (and say so when there is a note); this function
+    /// does not ask. The article itself stays, and stays read.
+    ///
+    /// Returns `true` when a save was removed and `false` when the article
+    /// was not saved. Fails with a readable message if no article has this ID.
+    pub fn unsave_article(&self, id: i64) -> Result<bool, FfiError> {
+        let storage = self.lock()?;
+        // Step 1: an unknown ID is an error, not a quiet `false`.
+        Self::existing_article(&storage, id)?;
+        // Step 2: core clears the save, the note and both dates.
+        Ok(storage.unsave_article(id)?)
+    }
+
     /// Sets, replaces or clears the note on an article.
     ///
-    /// A note of `None`, or only spaces, clears the note. An article that is
-    /// not saved yet is saved first, because a note only makes sense on a
-    /// saved article. An article that is already saved keeps its original
-    /// save date. Fails with a readable message if no article has this ID.
+    /// A note of `None`, or only spaces, clears the note and leaves the
+    /// article's saved state alone. A real note also saves the article (core
+    /// keeps a note and a save locked together), keeping an existing save
+    /// date. Fails with a readable message if no article has this ID.
     pub fn set_note(&self, id: i64, note: Option<String>) -> Result<(), FfiError> {
         let storage = self.lock()?;
-        let article = Self::existing_article(&storage, id)?;
+        // An unknown ID is an error before anything is written.
+        Self::existing_article(&storage, id)?;
 
-        // Step 1: tidy the note. `map` trims the ends, and `filter` turns an
-        // empty result into `None`, so "nothing typed" clears the note.
+        // Tidy the note. `map` trims the ends, and `filter` turns an empty
+        // result into `None`, so "nothing typed" clears the note. Core's
+        // `update_note` then stores it, saves the article when there is a
+        // real note, and keeps the "noted" date in step with the note.
         let note = note
             .map(|text| text.trim().to_string())
             .filter(|text| !text.is_empty());
-
-        // Step 2: save the article first if it is not saved yet.
-        if !article.saved {
-            storage.save_article(id, None)?;
-        }
-
-        // Step 3: store the note. Core also keeps the "noted" date in step
-        // with it (set when there is a note, cleared when there is none).
         Ok(storage.update_note(id, note)?)
     }
 
@@ -1434,6 +1448,36 @@ mod tests {
         db.save_article(first).unwrap();
         db.set_note(first, Some("a note".into())).unwrap();
         assert_eq!(saved_at(&db), before);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Un-saving removes the save and the note together, keeps the article,
+    /// can be undone by saving again, and reports when there was nothing to
+    /// remove. Clearing a note on an unsaved article does not save it.
+    #[tokio::test]
+    async fn unsaving_removes_the_save_and_the_note() {
+        let (db, first, second, dir) = database_with_two_articles().await;
+
+        // A saved article with a note: un-saving takes both away.
+        db.set_note(first, Some("keep this".into())).unwrap();
+        assert!(db.unsave_article(first).unwrap());
+        assert!(db.list_saved_articles().unwrap().is_empty());
+        let detail = db.article_detail(first).unwrap();
+        assert!(!detail.saved);
+        assert_eq!(detail.note, None);
+
+        // The article is still there, and saving it again starts clean.
+        db.save_article(first).unwrap();
+        assert_eq!(db.list_saved_articles().unwrap()[0].note, None);
+
+        // Nothing to remove: `false`. An unknown article is an error.
+        assert!(!db.unsave_article(second).unwrap());
+        assert!(db.unsave_article(99999).is_err());
+
+        // Clearing a note on an article that is not saved saves nothing.
+        db.set_note(second, None).unwrap();
+        assert!(!db.article_detail(second).unwrap().saved);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
