@@ -220,9 +220,9 @@ fun SyncScreen(
                         run {
                             message = "testing..."
                             isError = false
-                            onIo {
-                                syncTestConnection(draft.url, draft.database, draft.username, draft.password)
-                            }
+                            // A `suspend` function (network), so it is called
+                            // directly; `onIo` is only for blocking calls.
+                            syncTestConnection(draft.url, draft.database, draft.username, draft.password)
                             "connection works"
                         }
                     },
