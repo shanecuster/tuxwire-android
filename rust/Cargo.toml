@@ -31,12 +31,12 @@ resolver = "3"
 # master can never silently break this app. To move to a newer core, change
 # this hash on purpose, then rebuild and test.
 #
-# This commit is the tip of tuxwire's `feature/notes-export-core` branch: core
-# builds the saved-articles-and-notes export (`render_saved_markdown`). It sits
-# on top of feed discovery, the User-Agent fix, parallel refresh, OPML and
-# article summaries, and only exists on GitHub once that branch has been merged
-# and pushed.
-tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "efd2c523a0583af21a7150fff72ec0753b8997d1" }
+# This commit is the tip of tuxwire's `feature/couchdb-sync-core` branch: core
+# gains the optional CouchDB sync of saved articles and notes (`sync_now`,
+# `test_connection`). It sits on top of un-save, the notes export, feed
+# discovery, parallel refresh, OPML and article summaries, and exists on GitHub
+# once that branch has been merged and pushed.
+tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "690c405210cf88ccbdf7543cf3653baae44669af" }
 
 # `anyhow` is the catch-all error type tuxwire-core returns from its functions.
 # This crate needs to name that type to convert it into the error Kotlin sees.

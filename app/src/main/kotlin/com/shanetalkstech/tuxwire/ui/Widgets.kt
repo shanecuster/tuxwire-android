@@ -14,6 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -128,6 +130,8 @@ fun TuiRow(
  * @param modifier optional layout tweaks.
  * @param keyboardType which on-screen keyboard to offer (e.g. the web-address
  *   keyboard, which has "/" and ".com" keys).
+ * @param secret when true the typed text is drawn as dots and the keyboard
+ *   does not learn or suggest what is typed (for passwords).
  */
 @Composable
 fun TuiField(
@@ -136,6 +140,7 @@ fun TuiField(
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
     keyboardType: KeyboardType = KeyboardType.Text,
+    secret: Boolean = false,
 ) {
     val colors = LocalTuxwireColors.current
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -152,7 +157,16 @@ fun TuiField(
             ),
             // The colour of the blinking cursor.
             cursorBrush = SolidColor(colors.accentSelected),
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = if (secret) KeyboardType.Password else keyboardType,
+                // Stop the keyboard from correcting or remembering the text.
+                autoCorrectEnabled = !secret,
+            ),
+            visualTransformation = if (secret) {
+                PasswordVisualTransformation()
+            } else {
+                VisualTransformation.None
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .border(1.dp, colors.textDim)
