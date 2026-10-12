@@ -36,7 +36,7 @@ resolver = "3"
 # on top of feed discovery, the User-Agent fix, parallel refresh, OPML and
 # article summaries, and only exists on GitHub once that branch has been merged
 # and pushed.
-tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "a49d7726b36b206e57845231af4f47edefef4daf" }
+tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "efd2c523a0583af21a7150fff72ec0753b8997d1" }
 
 # `anyhow` is the catch-all error type tuxwire-core returns from its functions.
 # This crate needs to name that type to convert it into the error Kotlin sees.
