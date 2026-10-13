@@ -31,8 +31,14 @@
 #                     bindings. Handy for checking the bridge without the NDK.
 #   ANDROID_HOME      Where the Android SDK is. If unset, it is read from
 #                     `sdk.dir` in local.properties, which Android Studio writes.
-#   ANDROID_NDK_HOME  Which NDK to use. If unset, the newest one installed in
-#                     $ANDROID_HOME/ndk is used.
+#   TUXWIRE_NDK_VERSION  The exact NDK version to use, e.g. 30.0.16248370
+#                     (Gradle sets this from `pinnedNdkVersion` in
+#                     app/build.gradle.kts). If that version is not installed
+#                     the build stops with a message instead of quietly using
+#                     another one, so builds stay reproducible.
+#   ANDROID_NDK_HOME  Which NDK folder to use. If set, it wins over everything.
+#                     If neither this nor TUXWIRE_NDK_VERSION is set (running
+#                     the script by hand), the newest installed NDK is used.
 
 # `set -e`  stop at the first command that fails.
 # `set -u`  treat use of an undefined variable as an error (catches typos).
@@ -87,9 +93,19 @@ if [ "${TUXWIRE_SKIP_NDK:-0}" != "1" ]; then
     [ -n "${ANDROID_HOME:-}" ] \
         || fail "Android SDK not found. Open the project in Android Studio once (it writes local.properties), or set ANDROID_HOME."
 
-    # Locate the NDK. `ls -1` lists one folder per line, `sort -V` sorts version
-    # numbers properly (so 30.0 comes after 9.0), `tail -n 1` keeps the newest.
-    if [ -z "${ANDROID_NDK_HOME:-}" ]; then
+    # Locate the NDK. Three ways, in order:
+    #   1. ANDROID_NDK_HOME is already set: use it as it is.
+    #   2. TUXWIRE_NDK_VERSION is set (the normal case, set by Gradle): use
+    #      exactly that version, and stop if it is not installed.
+    #   3. Neither: take the newest installed. `ls -1` lists one folder per
+    #      line, `sort -V` sorts version numbers properly (so 30.0 comes after
+    #      9.0), `tail -n 1` keeps the last, which is the newest.
+    if [ -z "${ANDROID_NDK_HOME:-}" ] && [ -n "${TUXWIRE_NDK_VERSION:-}" ]; then
+        # `-d` tests that the path is a folder.
+        [ -d "$ANDROID_HOME/ndk/$TUXWIRE_NDK_VERSION" ] \
+            || fail "NDK $TUXWIRE_NDK_VERSION is not installed in $ANDROID_HOME/ndk. In Android Studio: Settings > Languages & Frameworks > Android SDK > SDK Tools > NDK (Side by side) > tick Show Package Details, then install exactly that version."
+        ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$TUXWIRE_NDK_VERSION"
+    elif [ -z "${ANDROID_NDK_HOME:-}" ]; then
         NDK_VERSION="$(ls -1 "$ANDROID_HOME/ndk" 2>/dev/null | sort -V | tail -n 1)"
         [ -n "$NDK_VERSION" ] \
             || fail "No NDK found in $ANDROID_HOME/ndk. In Android Studio: Settings > Languages & Frameworks > Android SDK > SDK Tools > NDK (Side by side)."
