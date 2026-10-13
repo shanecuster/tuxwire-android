@@ -1,0 +1,1 @@
+First release: feeds by topic, saved articles with notes, Markdown export, OPML import and export, and optional sync to your own CouchDB server.
