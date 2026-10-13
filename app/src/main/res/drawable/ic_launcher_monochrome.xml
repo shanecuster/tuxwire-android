@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The single-colour version of the icon, used on Android 13 and newer when the
+  person turns on "themed icons": the system paints the shape in the
+  wallpaper's colours, so only the outline matters, not the colour used here.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M32,36h44a2,2 0 0 1 2,2v32a2,2 0 0 1 -2,2h-44a2,2 0 0 1 -2,-2v-32a2,2 0 0 1 2,-2z"
+        android:strokeColor="#000000"
+        android:strokeWidth="2.5"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M40,46L50,54L40,62"
+        android:strokeColor="#000000"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M56,63L68,63"
+        android:strokeColor="#000000"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+</vector>
