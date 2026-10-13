@@ -18,10 +18,10 @@ pluginManagement {
     }
 }
 
-// Lets Gradle download a matching Java (JDK) automatically if one is needed.
-plugins {
-    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
-}
+// No JDK auto-download plugin here on purpose: F-Droid builds with the
+// operating system's own OpenJDK and does not allow fetching one mid-build.
+// Gradle simply runs on whichever JDK is installed (Android Studio brings its
+// own); the project never asks for a specific Java "toolchain".
 
 // Where Gradle looks for the app's *libraries*. FAIL_ON_PROJECT_REPOS means
 // modules may not add their own repositories, so every download source is
