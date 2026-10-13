@@ -1,7 +1,7 @@
 # tuxwire-android
 
 A native Android RSS reader that looks and feels like a terminal app: a
-monospace Nerd Font, bordered panels, and the same colour themes and icon sets
+monospace font, bordered panels, and the same colour themes
 as [tuxwire](https://github.com/shanecuster/tuxwire). No Termux needed.
 
 Status: early development. Milestone 2 is in: a home screen listing every feed
@@ -66,5 +66,5 @@ cargo fmt --check
 
 ## Licence
 
-MIT. The bundled font is JetBrains Mono Nerd Font under the SIL OFL; see
+MIT. The bundled font is JetBrains Mono (unmodified) under the SIL OFL 1.1; see
 `third_party/fonts/`.

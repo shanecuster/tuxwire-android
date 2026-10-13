@@ -11,15 +11,16 @@ import uniffi.tuxwire_ffi.RgbColor
 import uniffi.tuxwire_ffi.ThemePalette
 
 /**
- * The app's monospace font: JetBrains Mono Nerd Font, bundled in `res/font`.
+ * The app's monospace font: JetBrains Mono, bundled in `res/font` (SIL Open
+ * Font License; see `third_party/fonts/README.md`).
  *
  * Every character is the same width, which is what makes box borders line up
- * like they do in a terminal. The "Nerd Font" part adds the icon glyphs that
- * tuxwire's icon table uses. Two weights are registered: regular and bold.
+ * like they do in a terminal. The app draws no icon glyphs, so the plain
+ * font is all it needs. Two weights are registered: regular and bold.
  */
 val MonoFont: FontFamily = FontFamily(
-    Font(R.font.jetbrainsmono_nerd_mono_regular, FontWeight.Normal),
-    Font(R.font.jetbrainsmono_nerd_mono_bold, FontWeight.Bold),
+    Font(R.font.jetbrainsmono_regular, FontWeight.Normal),
+    Font(R.font.jetbrainsmono_bold, FontWeight.Bold),
 )
 
 /**
