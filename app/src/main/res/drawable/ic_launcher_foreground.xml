@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The front layer of the launcher icon: a bordered terminal panel with a
+  ">_" prompt, echoing the app's bordered panels. Everything is kept inside
+  the middle 66 x 66 of the 108 x 108 canvas (the "safe zone"), because
+  launchers crop the edges and zoom the icon while it animates.
+  Drawn from scratch for tuxwire; it copies no logo or mascot.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- The panel's border: a thin rounded rectangle. -->
+    <path
+        android:pathData="M32,36h44a2,2 0 0 1 2,2v32a2,2 0 0 1 -2,2h-44a2,2 0 0 1 -2,-2v-32a2,2 0 0 1 2,-2z"
+        android:strokeColor="#859289"
+        android:strokeWidth="2.5"
+        android:fillColor="#00000000" />
+    <!-- The ">" of the prompt. -->
+    <path
+        android:pathData="M40,46L50,54L40,62"
+        android:strokeColor="#83C092"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+    <!-- The "_" cursor. -->
+    <path
+        android:pathData="M56,63L68,63"
+        android:strokeColor="#83C092"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+</vector>

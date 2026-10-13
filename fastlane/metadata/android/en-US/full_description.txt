@@ -1,0 +1,25 @@
+tuxwire is an RSS reader that looks and feels like a terminal: monospace text, bordered panels, and colour themes shared with the tuxwire terminal app.
+
+Feeds and reading
+- Add a feed by its address or by a blog's address; tuxwire finds the feed for you.
+- Browse feeds by topic, then articles, then a plain-text summary of each one.
+- Open the full article in your browser when you want it.
+- Share a page from your browser to tuxwire to add its feed.
+- Import and export your feed list as OPML, the format other feed readers use.
+- Pinned top and bottom bars keep everything within reach of one hand.
+
+Saved articles and notes
+- Save any article and attach a note to it.
+- Un-saving, deleting a note, and anything else that removes something always asks first.
+- Export every saved article and note to one Markdown file, through Android's own file picker.
+
+Optional sync to your own server
+- Sync is off until you turn it on. It copies only your saved articles and notes to a CouchDB server that you run yourself, and only when you tap "sync now".
+- The server address must use https, and the password is stored encrypted on the phone using the Android Keystore.
+
+Privacy
+- The only permission is internet access, to download feeds.
+- No accounts, no ads, no analytics, no tracking. Your data stays on the phone unless you set up your own sync server.
+- The app opts out of cloud backups.
+
+tuxwire is free software under the MIT licence. The Rust engine is shared with the terminal version.

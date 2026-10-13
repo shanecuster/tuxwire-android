@@ -1,7 +1,7 @@
 # tuxwire-android
 
 A native Android RSS reader that looks and feels like a terminal app: a
-monospace Nerd Font, bordered panels, and the same colour themes and icon sets
+monospace font, bordered panels, and the same colour themes
 as [tuxwire](https://github.com/shanecuster/tuxwire). No Termux needed.
 
 Status: early development. Milestone 2 is in: a home screen listing every feed
@@ -43,17 +43,42 @@ text. **forget everything** (asks first) wipes the saved settings.
 
 ## Building
 
-You need Android Studio (with the SDK, NDK, and CMake from SDK Manager →
-SDK Tools), Rust via [rustup](https://rustup.rs), and cargo-ndk:
+You need Android Studio (with the SDK and the NDK from SDK Manager → SDK
+Tools), Rust via [rustup](https://rustup.rs), and cargo-ndk:
 
 ```bash
-rustup target add aarch64-linux-android x86_64-linux-android
 cargo install cargo-ndk
 ```
 
+The build is pinned so it comes out the same every time:
+
+- **NDK:** exactly the version in `pinnedNdkVersion` in `app/build.gradle.kts`
+  (currently `30.0.16248370`). Install that version in SDK Manager (tick
+  *Show Package Details* under *NDK (Side by side)*). The build stops with a
+  message if it is missing, rather than using a different one.
+- **Rust:** `rust/rust-toolchain.toml` names the exact compiler version and the
+  four Android targets; rustup downloads them the first time you build, so you
+  do not need `rustup target add`.
+- **Dependencies:** `Cargo.lock` is committed and the build uses `--locked`;
+  the shared engine is pinned to one commit in `rust/Cargo.toml`.
+
 Then open this folder in Android Studio (**Open**, not New Project) and press
 Run. Gradle calls `scripts/build-rust.sh`, which builds the Rust library for
-each CPU type and generates the Kotlin bindings.
+each CPU type and generates the Kotlin bindings. Everyday builds make
+`arm64-v8a` and `x86_64`; any release build (a Gradle task with "release" in
+its name) also makes `armeabi-v7a`. Override with
+`-PtuxwireAbis="arm64-v8a x86_64"`.
+
+## Releasing
+
+- **F-Droid metadata** lives in `fastlane/metadata/android/en-US/`. Add phone
+  screenshots as `phoneScreenshots/1.png`, `2.png`, ... in that folder. Add a
+  `changelogs/<versionCode>.txt` for every release.
+- **Version:** raise `versionCode` (it must go up every release) and
+  `versionName` in `app/build.gradle.kts`, then tag the release `v<versionName>`
+  (for example `v0.1.0`), because F-Droid builds from tags.
+- **No JDK download plugin:** the project builds with whichever JDK is
+  installed, as F-Droid's build server requires.
 
 Rust-only checks:
 
@@ -66,5 +91,5 @@ cargo fmt --check
 
 ## Licence
 
-MIT. The bundled font is JetBrains Mono Nerd Font under the SIL OFL; see
+MIT. The bundled font is JetBrains Mono (unmodified) under the SIL OFL 1.1; see
 `third_party/fonts/`.
