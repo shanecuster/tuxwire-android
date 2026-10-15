@@ -46,6 +46,9 @@ import uniffi.tuxwire_ffi.FeedInfo
  * @param themeName the active theme's name (shown on home only).
  * @param onCycleTheme called when the theme panel is tapped (home only).
  * @param bannerColor the colour of the logo (home only).
+ * @param scrollMemory remembers where the list was scrolled to, so coming back
+ *   from a deeper screen finds the list in the same place.
+ * @param scrollKey which entry of [scrollMemory] belongs to this list.
  * @param onHome jumps back to the home screen (topic page only).
  * @param onBack goes back one screen (topic page only).
  * @param onOpenFeed called with the tapped feed.
@@ -62,6 +65,8 @@ fun FeedsScreen(
     themeName: String,
     onCycleTheme: () -> Unit,
     bannerColor: Color,
+    scrollMemory: ScrollMemory,
+    scrollKey: String,
     onHome: () -> Unit,
     onBack: () -> Unit,
     onOpenFeed: (FeedInfo) -> Unit,
@@ -99,6 +104,19 @@ fun FeedsScreen(
 
     val loaded = feeds
     val hasFeeds = loaded?.getOrNull()?.isNotEmpty() == true
+
+    // The list's scroll position. It is created here, not inside the column
+    // below, so the helper that follows can watch it and move it.
+    val scrollState = rememberScrollState()
+
+    // Put the list back where it was when this screen is reached by "back",
+    // once the feeds have loaded, and keep writing down where it is.
+    RestoreAndTrackScroll(
+        state = scrollState,
+        memory = scrollMemory,
+        key = scrollKey,
+        ready = loaded != null,
+    )
 
     PinnedLayout(
         // Top bar. Home: the logo and a one-line theme switcher. A topic
@@ -226,7 +244,7 @@ fun FeedsScreen(
     ) {
         // The middle: the only part that scrolls.
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxSize().verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             when {

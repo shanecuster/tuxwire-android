@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -37,6 +38,9 @@ import uniffi.tuxwire_ffi.Database
  * @param topic the feed's topic (for the header only).
  * @param feedName the feed's name (for the header only).
  * @param feedUrl the feed's address, which identifies its articles.
+ * @param scrollMemory remembers where the list was scrolled to, so coming back
+ *   from an article finds the list in the same place (handy in a long feed).
+ * @param scrollKey which entry of [scrollMemory] belongs to this list.
  * @param onHome jumps back to the home screen.
  * @param onBack goes back to the feed list.
  * @param onOpenArticle opens the summary screen for the article with this ID.
@@ -47,12 +51,27 @@ fun ArticlesScreen(
     topic: String,
     feedName: String,
     feedUrl: String,
+    scrollMemory: ScrollMemory,
+    scrollKey: String,
     onHome: () -> Unit,
     onBack: () -> Unit,
     onOpenArticle: (Long) -> Unit,
 ) {
     val colors = LocalTuxwireColors.current
     val context = LocalContext.current
+
+    // The list's scroll position. If this screen was reached by "back", start
+    // from where the list was left (the first row on screen, and how far into
+    // it); otherwise the memory has nothing and the list starts at the top.
+    // The `remember` reads the memory once, before the tracker below starts
+    // writing the new position over it.
+    val saved = remember(scrollKey) { scrollMemory.get(scrollKey) }
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = saved?.first ?: 0,
+        initialFirstVisibleItemScrollOffset = saved?.offset ?: 0,
+    )
+    // Keep writing down where the list is, so leaving this screen is remembered.
+    TrackLazyScroll(state = listState, memory = scrollMemory, key = scrollKey)
 
     // Bumped after a refresh so the list loads again.
     var version by remember { mutableIntStateOf(0) }
@@ -115,7 +134,7 @@ fun ArticlesScreen(
             )
             // `LazyColumn` only builds the rows that are on screen, so a feed
             // with hundreds of articles stays fast.
-            else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+            else -> LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 items(loaded.getOrThrow(), key = { it.id }) { article ->
                     val isRead = article.read || article.id in readNow
                     val isSaved = article.saved || article.id in savedNow
