@@ -3,6 +3,7 @@
   The single-colour version of the icon, used on Android 13 and newer when the
   person turns on "themed icons": the system paints the shape in the
   wallpaper's colours, so only the outline matters, not the colour used here.
+  The shapes are identical to the foreground layer.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -10,21 +11,13 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:pathData="M32,36h44a2,2 0 0 1 2,2v32a2,2 0 0 1 -2,2h-44a2,2 0 0 1 -2,-2v-32a2,2 0 0 1 2,-2z"
+        android:pathData="M34.8,35.8L55.4,53.9L34.8,72"
         android:strokeColor="#000000"
-        android:strokeWidth="2.5"
-        android:fillColor="#00000000" />
-    <path
-        android:pathData="M40,46L50,54L40,62"
-        android:strokeColor="#000000"
-        android:strokeWidth="4"
+        android:strokeWidth="10"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:fillColor="#00000000" />
     <path
-        android:pathData="M56,63L68,63"
-        android:strokeColor="#000000"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:fillColor="#00000000" />
+        android:pathData="M62.4,64.8h14a1.8,1.8 0 0 1 1.8,1.8v6a1.8,1.8 0 0 1 -1.8,1.8h-14a1.8,1.8 0 0 1 -1.8,-1.8v-6a1.8,1.8 0 0 1 1.8,-1.8z"
+        android:fillColor="#000000" />
 </vector>
