@@ -47,7 +47,7 @@ You need Android Studio (with the SDK and the NDK from SDK Manager → SDK
 Tools), Rust via [rustup](https://rustup.rs), and cargo-ndk:
 
 ```bash
-cargo install cargo-ndk
+cargo install cargo-ndk --version 4.1.2 --locked
 ```
 
 The build is pinned so it comes out the same every time:
@@ -56,6 +56,8 @@ The build is pinned so it comes out the same every time:
   (currently `30.0.16248370`). Install that version in SDK Manager (tick
   *Show Package Details* under *NDK (Side by side)*). The build stops with a
   message if it is missing, rather than using a different one.
+- **cargo-ndk:** version `4.1.2`, the version this app is built and tested
+  with. Check yours with `cargo ndk --version`.
 - **Rust:** `rust/rust-toolchain.toml` names the exact compiler version and the
   four Android targets; rustup downloads them the first time you build, so you
   do not need `rustup target add`.
