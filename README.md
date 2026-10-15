@@ -113,7 +113,10 @@ re-signs what users download with its own app signing key.
 3. **Build the bundle:** `./gradlew bundleRelease`. It lands in
    `app/build/outputs/bundle/release/app-release.aab`. Without
    `keystore.properties` the same command still works but the result is
-   unsigned, which Play will reject.
+   unsigned, which Play will reject. If the file exists but a detail (such as a
+   password) is missing, the build prints a `WARNING` naming it and the result
+   is unsigned too. Debug builds, including Android Studio's Run button, never
+   need the key and ignore all of this.
 4. **In Play Console,** use the public link to `PRIVACY.md` as the privacy
    policy. The app collects no data itself (see that file) and asks only for
    `INTERNET`.

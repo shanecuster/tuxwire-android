@@ -22,13 +22,19 @@ plugins {
 // Studio (SDK Manager > SDK Tools > NDK (Side by side)) and edit this line.
 val pinnedNdkVersion = "30.0.16248370"
 
-// Which CPU types the Rust library is built for. Release builds (any Gradle
-// task with "release" in its name, e.g. assembleRelease) get all three: 64-bit
-// phones, old 32-bit phones, and the x86_64 emulator. Everyday debug builds
-// leave this unset, so the script's quicker default (arm64-v8a and x86_64)
-// applies. `-PtuxwireAbis="..."` on the Gradle command line overrides both.
+// True when this run was asked for a release build, i.e. any requested Gradle
+// task has "release" in its name (assembleRelease, bundleRelease, ...). Used
+// below to choose the CPU types and to warn about an incomplete signing setup.
+val releaseBuildRequested: Boolean =
+    gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
+
+// Which CPU types the Rust library is built for. Release builds (see above)
+// get all three: 64-bit phones, old 32-bit phones, and the x86_64 emulator.
+// Everyday debug builds leave this unset, so the script's quicker default
+// (arm64-v8a and x86_64) applies. `-PtuxwireAbis="..."` on the Gradle command
+// line overrides both.
 val requestedAbis: String? = providers.gradleProperty("tuxwireAbis").orNull
-    ?: if (gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }) {
+    ?: if (releaseBuildRequested) {
         "arm64-v8a armeabi-v7a x86_64"
     } else {
         null
@@ -56,11 +62,41 @@ val keystoreProperties = Properties().apply {
     }
 }
 
-// Reads one required setting from keystore.properties, or stops the build with
-// a message that names the missing key (instead of a confusing null error).
-fun keystoreSetting(name: String): String =
-    keystoreProperties.getProperty(name)
-        ?: error("keystore.properties is missing \"$name\" (see keystore.properties.example)")
+// Looks up one signing setting. The environment variable (when a name is given)
+// wins over keystore.properties, and a blank value counts as missing. Returns
+// null when neither has it; it never stops the build by itself.
+fun signingSetting(key: String, envName: String? = null): String? =
+    listOfNotNull(envName?.let { System.getenv(it) }, keystoreProperties.getProperty(key))
+        .firstOrNull { it.isNotBlank() }
+
+val signingStoreFile = signingSetting("storeFile")
+val signingKeyAlias = signingSetting("keyAlias")
+val signingStorePassword = signingSetting("storePassword", "TUXWIRE_STORE_PASSWORD")
+val signingKeyPassword = signingSetting("keyPassword", "TUXWIRE_KEY_PASSWORD")
+
+// The names of the signing details that are still missing. The signing key is
+// used only when this list is empty. Everyday debug builds (Android Studio's
+// Run button, which does not see passwords typed into a terminal) never need
+// the key, so an incomplete setup must not break them.
+val missingSigningDetails: List<String> = listOf(
+    "storeFile" to signingStoreFile,
+    "keyAlias" to signingKeyAlias,
+    "storePassword" to signingStorePassword,
+    "keyPassword" to signingKeyPassword,
+).filter { it.second == null }.map { it.first }
+
+val canSignRelease: Boolean = missingSigningDetails.isEmpty()
+
+// A release build that was meant to be signed but cannot be: say so loudly,
+// because the result will be unsigned and Google Play rejects unsigned files.
+if (releaseBuildRequested && keystorePropertiesFile.exists() && !canSignRelease) {
+    logger.warn(
+        "WARNING: keystore.properties exists but these signing details are missing: " +
+            "${missingSigningDetails.joinToString()}. This release build will be UNSIGNED. " +
+            "Put them in the file, or set TUXWIRE_STORE_PASSWORD and TUXWIRE_KEY_PASSWORD " +
+            "in the terminal you build from (see keystore.properties.example).",
+    )
+}
 
 android {
     // Where the code lives and the prefix of the generated `R` class (R.font...).
@@ -90,20 +126,21 @@ android {
         }
     }
 
-    // The key used to sign release builds, defined only when keystore.properties
-    // exists. For Google Play this is the *upload key*: Play re-signs what you
-    // upload with its own app signing key. The two passwords may be left out of
-    // the file and given as the environment variables TUXWIRE_STORE_PASSWORD and
+    // The key used to sign release builds, defined only when every signing
+    // detail is available (see `missingSigningDetails` above). For Google Play
+    // this is the *upload key*: Play re-signs what you upload with its own app
+    // signing key. The two passwords may be left out of keystore.properties and
+    // given as the environment variables TUXWIRE_STORE_PASSWORD and
     // TUXWIRE_KEY_PASSWORD instead, so they are never written to disk.
     signingConfigs {
-        if (keystorePropertiesFile.exists()) {
+        if (canSignRelease) {
             create("release") {
-                storeFile = File(keystoreSetting("storeFile"))
-                keyAlias = keystoreSetting("keyAlias")
-                storePassword = System.getenv("TUXWIRE_STORE_PASSWORD")
-                    ?: keystoreSetting("storePassword")
-                keyPassword = System.getenv("TUXWIRE_KEY_PASSWORD")
-                    ?: keystoreSetting("keyPassword")
+                // `checkNotNull` turns "maybe missing" into "definitely there"
+                // (it cannot fail here: canSignRelease was just checked).
+                storeFile = File(checkNotNull(signingStoreFile))
+                keyAlias = checkNotNull(signingKeyAlias)
+                storePassword = checkNotNull(signingStorePassword)
+                keyPassword = checkNotNull(signingKeyPassword)
             }
         }
     }
@@ -121,8 +158,8 @@ android {
             // mistake in them only shows up as a crash on a real phone. Turn it
             // on only together with a rule set that has been tested on a device.
             isMinifyEnabled = false
-            // Sign with the release key when keystore.properties exists.
-            if (keystorePropertiesFile.exists()) {
+            // Sign with the release key when all its details are available.
+            if (canSignRelease) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
