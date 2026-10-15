@@ -39,7 +39,8 @@ text. **forget everything** (asks first) wipes the saved settings.
 - **Engine:** `tuxwire-core`, the same Rust crate the terminal app uses, called
   through [UniFFI](https://mozilla.github.io/uniffi-rs/).
 - **Privacy:** the only permission is `INTERNET`. Everything is stored on the
-  device. Syncing to your own server is optional and off by default.
+  device. Syncing to your own server is optional and off by default. The full
+  policy is in [PRIVACY.md](PRIVACY.md).
 
 ## Building
 
@@ -73,14 +74,66 @@ its name) also makes `armeabi-v7a`. Override with
 
 ## Releasing
 
-- **F-Droid metadata** lives in `fastlane/metadata/android/en-US/`. Add phone
-  screenshots as `phoneScreenshots/1.png`, `2.png`, ... in that folder. Add a
-  `changelogs/<versionCode>.txt` for every release.
-- **Version:** raise `versionCode` (it must go up every release) and
-  `versionName` in `app/build.gradle.kts`, then tag the release `v<versionName>`
-  (for example `v0.1.0`), because F-Droid builds from tags.
+### Every release
+
+1. **Version:** raise `versionCode` (it must go up every release) and
+   `versionName` in `app/build.gradle.kts`, and add
+   `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`.
+2. **Merge, then tag** the release `v<versionName>` (for example `v0.1.1`) and
+   push the tag, because F-Droid builds from tags. Never move or reuse a tag; a
+   fix is a new version and a new tag.
+3. **Check the release build.** `./gradlew assembleRelease` must succeed and
+   `app/build/outputs/apk/release/` must hold an APK with `arm64-v8a`,
+   `armeabi-v7a` and `x86_64` libraries (`unzip -l <apk> | grep '\.so'`). Google
+   Play requires 16 KB page alignment for updates from 1 February 2027:
+   `zipalign -c -P 16 -v 4 <apk>` (from the SDK's `build-tools`) must say
+   "Verification successful", and Android Studio's **Build → Analyze APK** shows
+   `16 KB` in the Alignment column of every 64-bit `.so`.
+
+### Google Play: the signed bundle
+
+Play takes an Android App Bundle (`.aab`), signed with an **upload key**; Play
+re-signs what users download with its own app signing key.
+
+1. **Make the upload key once**, outside this folder, and back it up. If it is
+   lost you cannot upload updates with it.
+
+   ```bash
+   mkdir -p ~/keys
+   keytool -genkeypair -v -keystore ~/keys/tuxwire-upload.jks \
+     -alias tuxwire-upload -keyalg RSA -keysize 4096 -validity 10000
+   ```
+
+2. **Point the build at it.** Copy `keystore.properties.example` to
+   `keystore.properties` (git-ignored) and fill in `storeFile` (a full path) and
+   `keyAlias`. To keep the passwords out of any file, leave them out and set
+   them in the terminal you build from (bash: `read -rs TUXWIRE_STORE_PASSWORD;
+   export TUXWIRE_STORE_PASSWORD`; fish: `read -s -x TUXWIRE_STORE_PASSWORD`),
+   and the same for `TUXWIRE_KEY_PASSWORD`.
+3. **Build the bundle:** `./gradlew bundleRelease`. It lands in
+   `app/build/outputs/bundle/release/app-release.aab`. Without
+   `keystore.properties` the same command still works but the result is
+   unsigned, which Play will reject.
+4. **In Play Console,** use the public link to `PRIVACY.md` as the privacy
+   policy. The app collects no data itself (see that file) and asks only for
+   `INTERNET`.
+
+Code shrinking (R8) is off on purpose; the reason is next to `isMinifyEnabled`
+in `app/build.gradle.kts`.
+
+### F-Droid
+
+- **Metadata** lives in `fastlane/metadata/android/en-US/`. Add phone
+  screenshots as `phoneScreenshots/1.png`, `2.png`, ... in that folder.
 - **No JDK download plugin:** the project builds with whichever JDK is
-  installed, as F-Droid's build server requires.
+  installed, as F-Droid's build server requires. Do not commit
+  `gradle/gradle-daemon-jvm.properties` (it is git-ignored); it holds JDK
+  download links.
+- **Signing keys:** F-Droid signs with its own key unless the build is verified
+  reproducible and your signature is used. Android refuses to update an app with
+  one signed by a different key, so a phone cannot move between the F-Droid and
+  Play builds without reinstalling. Decide before the first upload whether that
+  matters to you.
 
 Rust-only checks:
 
