@@ -28,6 +28,15 @@ val requestedAbis: String? = providers.gradleProperty("tuxwireAbis").orNull
         null
     }
 
+// The CPU types whose libraries are packed into the APK. It must match what
+// scripts/build-rust.sh actually builds (its default is "arm64-v8a x86_64"),
+// because our own library `libtuxwire_ffi.so` exists only for those. Without
+// this list the JNA dependency adds its own libraries for four more CPU types
+// (armeabi, mips, mips64, x86); a 32-bit x86 device would then install the app
+// and crash at launch, since our library is missing there.
+val packagedAbis: List<String> =
+    (requestedAbis ?: "arm64-v8a x86_64").split(" ").filter { it.isNotBlank() }
+
 android {
     // Where the code lives and the prefix of the generated `R` class (R.font...).
     namespace = "com.shanetalkstech.tuxwire"
@@ -46,6 +55,12 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
+
+        ndk {
+            // Keep only the CPU types we built (see `packagedAbis` above).
+            // `+=` adds each name in the list to the set of allowed types.
+            abiFilters += packagedAbis
+        }
     }
 
     buildTypes {
