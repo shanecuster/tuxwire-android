@@ -234,6 +234,8 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                         // breadcrumb, and there is no feed address.
                         Screen.Saved -> SavedScreen(
                             db = db,
+                            scrollMemory = scrollMemory,
+                            scrollKey = screen.encode(),
                             onHome = goHome,
                             onBack = pop,
                             onOpenArticle = { push(Screen.Article("saved", it.source, "", it.id)) },
