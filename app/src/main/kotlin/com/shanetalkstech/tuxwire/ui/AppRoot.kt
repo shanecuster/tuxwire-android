@@ -261,6 +261,8 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                             topic = screen.topic,
                             feedName = screen.feedName,
                             feedUrl = screen.feedUrl,
+                            scrollMemory = scrollMemory,
+                            scrollKey = screen.encode(),
                             onHome = goHome,
                             onBack = pop,
                             onOpenArticle = {
