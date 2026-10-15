@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -110,12 +111,27 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
             if (stack.last() == Screen.Home) homeVisits++
         }
     }
+    // Where each list was scrolled to, so "back" returns to the same place in a
+    // long list. It lives here because this function never leaves the screen,
+    // while the list screens do (each is removed when a deeper one opens).
+    val scrollMemory = rememberSaveable(saver = ScrollMemory.Saver) { ScrollMemory() }
+
     // Throws away the whole back stack and shows the home screen.
     val goHome: () -> Unit = {
         if (stack.size > 1) {
+            // Jumping home is a "start over": every list begins at the top again.
+            scrollMemory.clear()
             stack = listOf(Screen.Home)
             homeVisits++
         }
+    }
+
+    // After every change of screen, keep the remembered positions of the screens
+    // still in the back stack and forget the rest. This is what makes "back" keep
+    // your place while opening the same list afresh starts at the top. (A
+    // `SideEffect` runs after each successful redraw of this function.)
+    SideEffect {
+        scrollMemory.keepOnly(stack.map { it.encode() }.toSet())
     }
 
     // Something was shared to tuxwire: show the add-feed form on top of home,
@@ -189,6 +205,8 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                             themeName = themeName ?: "",
                             onCycleTheme = cycleTheme,
                             bannerColor = logoColor,
+                            scrollMemory = scrollMemory,
+                            scrollKey = screen.encode(),
                             onHome = goHome,
                             onBack = pop,
                             onOpenFeed = { push(Screen.Articles(it.topic, it.name, it.url)) },
@@ -227,6 +245,8 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                             themeName = "",
                             onCycleTheme = {},
                             bannerColor = logoColor,
+                            scrollMemory = scrollMemory,
+                            scrollKey = screen.encode(),
                             onHome = goHome,
                             onBack = pop,
                             onOpenFeed = { push(Screen.Articles(screen.topic, it.name, it.url)) },
