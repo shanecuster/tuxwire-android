@@ -1,6 +1,12 @@
 // Build file for the `app` module: what the app is called, which Android
 // versions it supports, and which libraries it uses.
 
+// An import must come first in the file. It is needed because, inside a Gradle
+// script, the bare word `java` means Gradle's own `java { }` setting, so the
+// full name `java.util.Properties` would not be found. With the import, the
+// short name `Properties` (a key=value file reader) works.
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     // Turns on the Compose compiler (Kotlin support is built into the Android
@@ -43,7 +49,7 @@ val packagedAbis: List<String> =
 // a fresh clone, release builds still work; they just come out unsigned.
 // See keystore.properties.example and the "Releasing" section of the README.
 val keystorePropertiesFile = rootProject.file("keystore.properties")
-val keystoreProperties = java.util.Properties().apply {
+val keystoreProperties = Properties().apply {
     // `.use { }` closes the file again when loading is done.
     if (keystorePropertiesFile.exists()) {
         keystorePropertiesFile.inputStream().use { load(it) }
