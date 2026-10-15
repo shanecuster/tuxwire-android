@@ -9,6 +9,15 @@ build/
 .cxx/
 captures/
 
+# Gradle can generate this file; it holds JDK download links, which the F-Droid
+# build must not use (see "No JDK download plugin" in the README).
+gradle/gradle-daemon-jvm.properties
+
+# Release signing: the keys and the file that points at them never go in git.
+keystore.properties
+*.jks
+*.keystore
+
 # Rust build output.
 rust/target/
 

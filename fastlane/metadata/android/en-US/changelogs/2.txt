@@ -1,0 +1,1 @@
+New launcher icon. The package no longer carries libraries for CPU types that no phone uses. Nothing else changes, and your feeds, saved articles and notes are untouched.

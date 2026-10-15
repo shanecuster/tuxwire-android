@@ -1,6 +1,12 @@
 // Build file for the `app` module: what the app is called, which Android
 // versions it supports, and which libraries it uses.
 
+// An import must come first in the file. It is needed because, inside a Gradle
+// script, the bare word `java` means Gradle's own `java { }` setting, so the
+// full name `java.util.Properties` would not be found. With the import, the
+// short name `Properties` (a key=value file reader) works.
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     // Turns on the Compose compiler (Kotlin support is built into the Android
@@ -28,6 +34,34 @@ val requestedAbis: String? = providers.gradleProperty("tuxwireAbis").orNull
         null
     }
 
+// The CPU types whose libraries are packed into the APK. It must match what
+// scripts/build-rust.sh actually builds (its default is "arm64-v8a x86_64"),
+// because our own library `libtuxwire_ffi.so` exists only for those. Without
+// this list the JNA dependency adds its own libraries for four more CPU types
+// (armeabi, mips, mips64, x86); a 32-bit x86 device would then install the app
+// and crash at launch, since our library is missing there.
+val packagedAbis: List<String> =
+    (requestedAbis ?: "arm64-v8a x86_64").split(" ").filter { it.isNotBlank() }
+
+// Release signing details come from `keystore.properties` in the project root.
+// That file (and the keystore it points to) is git-ignored: a signing key must
+// never be committed. If the file is missing, as on F-Droid's build server or
+// a fresh clone, release builds still work; they just come out unsigned.
+// See keystore.properties.example and the "Releasing" section of the README.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    // `.use { }` closes the file again when loading is done.
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+
+// Reads one required setting from keystore.properties, or stops the build with
+// a message that names the missing key (instead of a confusing null error).
+fun keystoreSetting(name: String): String =
+    keystoreProperties.getProperty(name)
+        ?: error("keystore.properties is missing \"$name\" (see keystore.properties.example)")
+
 android {
     // Where the code lives and the prefix of the generated `R` class (R.font...).
     namespace = "com.shanetalkstech.tuxwire"
@@ -44,8 +78,34 @@ android {
         // scripts/build-rust.sh.
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        // Must go up with every release (stores refuse a lower or equal number).
+        // The matching F-Droid changelog is fastlane/.../changelogs/<versionCode>.txt.
+        versionCode = 2
+        versionName = "0.1.1"
+
+        ndk {
+            // Keep only the CPU types we built (see `packagedAbis` above).
+            // `+=` adds each name in the list to the set of allowed types.
+            abiFilters += packagedAbis
+        }
+    }
+
+    // The key used to sign release builds, defined only when keystore.properties
+    // exists. For Google Play this is the *upload key*: Play re-signs what you
+    // upload with its own app signing key. The two passwords may be left out of
+    // the file and given as the environment variables TUXWIRE_STORE_PASSWORD and
+    // TUXWIRE_KEY_PASSWORD instead, so they are never written to disk.
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                storeFile = File(keystoreSetting("storeFile"))
+                keyAlias = keystoreSetting("keyAlias")
+                storePassword = System.getenv("TUXWIRE_STORE_PASSWORD")
+                    ?: keystoreSetting("storePassword")
+                keyPassword = System.getenv("TUXWIRE_KEY_PASSWORD")
+                    ?: keystoreSetting("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -53,6 +113,18 @@ android {
             // Debug builds install as a *separate app* (com.shanetalkstech.tuxwire.debug)
             // so they never overwrite or share data with a real release install.
             applicationIdSuffix = ".debug"
+        }
+        release {
+            // Code shrinking (R8) is deliberately OFF. JNA and the Kotlin that
+            // UniFFI generates look up classes and methods by name while the
+            // app runs, so shrinking would need hand-written "keep" rules, and a
+            // mistake in them only shows up as a crash on a real phone. Turn it
+            // on only together with a rule set that has been tested on a device.
+            isMinifyEnabled = false
+            // Sign with the release key when keystore.properties exists.
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
