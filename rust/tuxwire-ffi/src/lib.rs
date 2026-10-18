@@ -52,8 +52,9 @@ use tuxwire_core::fetch_report::FetchReport;
 use tuxwire_core::fetchers::{SourceType, configured_sources, fetch_all};
 use tuxwire_core::models::Article;
 use tuxwire_core::opml::{parse_opml, write_opml};
-use tuxwire_core::storage::{Feed, Scope, Storage};
+use tuxwire_core::storage::{Feed, FeedEntry, Scope, Storage};
 use tuxwire_core::sync::SyncConfig;
+use tuxwire_core::sync::feeds::{feed_key, sync_feeds};
 use tuxwire_core::theme::{BUILTIN_THEMES, DEFAULT_THEME, Palette, Rgb, picker_order};
 
 // ---------------------------------------------------------------------------
@@ -836,6 +837,82 @@ impl Database {
         let storage = self.lock()?;
         Ok(storage.reset_sync_state()?)
     }
+
+    /// The feeds another device removed that are still in this device's list
+    /// and have not been answered. Reads only the local database (no network),
+    /// so the screen can show a waiting question again after a restart.
+    pub fn pending_feed_removals(&self) -> Result<Vec<FeedRemovalRequest>, FfiError> {
+        let storage = self.lock()?;
+        Ok(removal_requests(storage.pending_feed_removals()?))
+    }
+
+    /// The person said yes: take the feed at `url` out of this device's list
+    /// (its articles are kept, like any removal) and tell sync it is gone.
+    /// Returns whether the feed was in the list. Call this only after the
+    /// person confirmed.
+    pub fn confirm_feed_removal(&self, url: String) -> Result<bool, FfiError> {
+        let storage = self.lock()?;
+        // Find the stored feed whose address matches, ignoring capitals.
+        let wanted = feed_key(&url);
+        let found = storage
+            .list_feeds()?
+            .into_iter()
+            .find(|feed| feed_key(&feed.url) == wanted);
+        // Remove first, then tell sync: if removing fails (`?`) the question
+        // stays pending and is asked again.
+        let existed = match found {
+            Some(feed) => storage.remove_feed(feed.id)?,
+            None => false,
+        };
+        storage.feed_removed_locally(&url)?;
+        Ok(existed)
+    }
+
+    /// The person said no: keep the feed. Nothing is sent to the server, and
+    /// the question is asked again only if the other device changes the feed
+    /// again.
+    pub fn keep_feed(&self, url: String) -> Result<(), FfiError> {
+        let storage = self.lock()?;
+        Ok(storage.dismiss_feed_removal(&url)?)
+    }
+}
+
+/// One feed that another device removed and this device still has. The app
+/// shows these to the person and asks before taking anything out.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct FeedRemovalRequest {
+    /// The feed's name, as this device knows it from the server.
+    pub name: String,
+    /// The feed's address. Pass it back to `confirm_feed_removal` or `keep_feed`.
+    pub url: String,
+    /// The topic it is filed under.
+    pub topic: String,
+}
+
+/// What one feed-list sync did.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct FeedSyncSummary {
+    /// Core's one-line report (changes sent, anything skipped).
+    pub report: String,
+    /// How many feeds other devices added that are now in this device's list.
+    pub added: u32,
+    /// Feeds another device removed that are still here. Nothing has been
+    /// removed: the person must be asked.
+    pub removals: Vec<FeedRemovalRequest>,
+}
+
+/// Turns core's feed entries into the records Kotlin sees.
+fn removal_requests(entries: Vec<FeedEntry>) -> Vec<FeedRemovalRequest> {
+    // `into_iter` takes the entries by value; `map` builds one record from
+    // each; `collect` gathers them into a `Vec`.
+    entries
+        .into_iter()
+        .map(|entry| FeedRemovalRequest {
+            name: entry.name,
+            url: entry.url,
+            topic: entry.topic,
+        })
+        .collect()
 }
 
 /// The two network-using methods. They are `async`, so UniFFI turns them into
@@ -893,6 +970,72 @@ impl Database {
         // never holds it while waiting on the network.
         let report = tuxwire_core::sync::sync_now(&self.storage, &config).await?;
         Ok(report.summary())
+    }
+
+    /// Runs one optional sync of the **feed list** and returns what it did.
+    ///
+    /// This is separate from `sync_now` and has its own switch: `feeds` must be
+    /// `true` as well as `enabled`, or core refuses before touching the
+    /// network. Feeds other devices added are added to this device's list
+    /// here; feeds another device removed are only *returned* in `removals`
+    /// (nothing is removed). The app asks the person, then calls
+    /// `confirm_feed_removal` or `keep_feed`.
+    pub async fn sync_feeds_now(
+        &self,
+        enabled: bool,
+        feeds: bool,
+        url: String,
+        database: String,
+        username: String,
+        password: String,
+    ) -> Result<FeedSyncSummary, FfiError> {
+        // Step 1: settings, with the separate feed switch.
+        let config = SyncConfig::new(enabled, url, database, username, password).with_feeds(feeds);
+
+        // Step 2: this device's feed list as plain entries. Only RSS feeds are
+        // synced. The lock is held just for the read (the block's closing
+        // brace drops it), never across the network wait below.
+        let local: Vec<FeedEntry> = {
+            let storage = self.lock()?;
+            storage
+                .list_feeds()?
+                .into_iter()
+                .filter(|feed| feed.source_type == SourceType::Rss)
+                .map(|feed| FeedEntry {
+                    name: feed.name,
+                    url: feed.url,
+                    topic: feed.topic,
+                })
+                .collect()
+        };
+
+        // Step 3: the exchange with the server.
+        let report = sync_feeds(&self.storage, &config, local).await?;
+
+        // Step 4: add the feeds other devices added, then list the removals.
+        let storage = self.lock()?;
+        let pending = storage.pending_feed_additions()?;
+        // Addresses already here (lower-case), so a feed is never added twice.
+        let mut known: std::collections::HashSet<String> = storage
+            .list_feeds()?
+            .iter()
+            .map(|feed| feed_key(&feed.url))
+            .collect();
+        let mut added: u32 = 0;
+        for entry in &pending {
+            // `insert` is `true` only the first time an address is seen.
+            if known.insert(feed_key(&entry.url)) {
+                storage.add_feed(&entry.name, &entry.url, &entry.topic, SourceType::Rss)?;
+                added += 1;
+            }
+            // Tell sync this device has it now (also when it already did).
+            storage.feed_added_locally(&entry.url)?;
+        }
+        Ok(FeedSyncSummary {
+            report: report.summary(),
+            added,
+            removals: removal_requests(storage.pending_feed_removals()?),
+        })
     }
 }
 
@@ -1574,6 +1717,96 @@ mod tests {
         // Resetting the bookkeeping keeps the save.
         db.reset_sync_state().unwrap();
         assert_eq!(db.list_saved_articles().unwrap().len(), 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Feed sync is safe by default: with either switch off it refuses before
+    /// any network use, and the refusal does not repeat the address or the
+    /// password.
+    #[tokio::test]
+    async fn feed_sync_needs_both_switches() {
+        let (db, dir) = temp_database();
+        db.add_feed("A".into(), "https://a.example/feed".into(), "t".into())
+            .unwrap();
+        // (enabled, feeds): every combination except both on is refused.
+        for (enabled, feeds) in [(false, false), (true, false), (false, true)] {
+            let err = db
+                .sync_feeds_now(
+                    enabled,
+                    feeds,
+                    "https://couch.invalid".into(),
+                    "tuxwire".into(),
+                    "user".into(),
+                    "secret-pass".into(),
+                )
+                .await
+                .unwrap_err()
+                .to_string();
+            assert!(!err.contains("secret-pass"), "password leaked: {err}");
+            assert!(!err.contains("couch.invalid"), "address leaked: {err}");
+        }
+        // The feed is untouched.
+        assert_eq!(db.list_all_feeds().unwrap().len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A feed another device removed is listed, not removed. Keeping it stops
+    /// the question; a newer removal asks again; confirming removes the feed
+    /// (and only then).
+    #[test]
+    fn a_removal_waits_for_the_persons_answer() {
+        use tuxwire_core::sync::feeds::{FeedDoc, feed_doc_id};
+        let (db, dir) = temp_database();
+        db.add_feed("A".into(), "https://a.example/Feed".into(), "t".into())
+            .unwrap();
+
+        // Pretend the server delivered a removal with the given revision/time.
+        let deliver = |rev: &str, at: i64| {
+            let storage = db.lock().unwrap();
+            let doc = FeedDoc {
+                id: feed_doc_id("https://a.example/feed"),
+                rev: Some(rev.to_string()),
+                v: 1,
+                url: "https://a.example/feed".to_string(),
+                name: "A".to_string(),
+                topic: "t".to_string(),
+                source_type: "rss".to_string(),
+                present: false,
+                updated_at: at,
+            };
+            storage.apply_remote_feed_batch(vec![doc], "1").unwrap();
+        };
+        // The device's own list has to be recorded first, as a sync would.
+        {
+            let storage = db.lock().unwrap();
+            let entries = vec![FeedEntry {
+                name: "A".into(),
+                url: "https://a.example/Feed".into(),
+                topic: "t".into(),
+            }];
+            storage.record_local_feeds(&entries).unwrap();
+        }
+
+        // Asked about, but still there.
+        deliver("1-a", 9_000_000_000_000);
+        assert_eq!(db.pending_feed_removals().unwrap().len(), 1);
+        assert_eq!(db.list_all_feeds().unwrap().len(), 1);
+
+        // No: kept, and not asked again.
+        db.keep_feed("https://a.example/feed".into()).unwrap();
+        assert!(db.pending_feed_removals().unwrap().is_empty());
+        assert_eq!(db.list_all_feeds().unwrap().len(), 1);
+
+        // A newer removal asks again; yes removes it (address in other capitals).
+        deliver("2-b", 9_000_000_000_001);
+        assert_eq!(db.pending_feed_removals().unwrap().len(), 1);
+        assert!(
+            db.confirm_feed_removal("https://A.example/FEED".into())
+                .unwrap()
+        );
+        assert!(db.list_all_feeds().unwrap().is_empty());
+        assert!(db.pending_feed_removals().unwrap().is_empty());
 
         let _ = std::fs::remove_dir_all(&dir);
     }
