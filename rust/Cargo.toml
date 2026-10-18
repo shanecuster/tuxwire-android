@@ -31,12 +31,12 @@ resolver = "3"
 # master can never silently break this app. To move to a newer core, change
 # this hash on purpose, then rebuild and test.
 #
-# This commit is the tip of tuxwire's `feature/couchdb-sync-core` branch: core
-# gains the optional CouchDB sync of saved articles and notes (`sync_now`,
-# `test_connection`). It sits on top of un-save, the notes export, feed
-# discovery, parallel refresh, OPML and article summaries, and exists on GitHub
-# once that branch has been merged and pushed.
-tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "690c405210cf88ccbdf7543cf3653baae44669af" }
+# This commit is the tip of tuxwire's `feature/feed-sync-core` branch: core
+# gains the optional feed-list sync (`sync::feeds::sync_feeds` and the
+# `Storage` methods for feeds other devices added or removed), on top of the
+# optional CouchDB sync of saved articles and notes. It exists on GitHub once
+# that branch has been merged and pushed.
+tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "cdeeb2b5e845627003b8ffa5a6ffe3e2747ff651" }
 
 # `anyhow` is the catch-all error type tuxwire-core returns from its functions.
 # This crate needs to name that type to convert it into the error Kotlin sees.

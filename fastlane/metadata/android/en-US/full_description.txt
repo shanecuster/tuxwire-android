@@ -14,7 +14,7 @@ Saved articles and notes
 - Export every saved article and note to one Markdown file, through Android's own file picker.
 
 Optional sync to your own server
-- Sync is off until you turn it on. It copies only your saved articles and notes to a CouchDB server that you run yourself, and only when you tap "sync now".
+- Sync is off until you turn it on. It copies only your saved articles and notes to a CouchDB server that you run yourself, and only when you tap "sync now". A separate switch, also off by default, can copy your feed list too, so feeds you add on one device appear on the others. Nothing is removed without asking you.
 - The server address must use https, and the password is stored encrypted on the phone using the Android Keystore.
 
 Privacy

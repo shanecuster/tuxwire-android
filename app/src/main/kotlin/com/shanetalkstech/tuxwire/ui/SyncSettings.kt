@@ -19,6 +19,9 @@ import javax.crypto.spec.GCMParameterSpec
  * @property username the login name.
  * @property password the password in plain text, only ever held in memory; an
  *   empty string when none is saved or it could not be read back.
+ * @property feeds the separate switch for syncing the feed list too. `false`
+ *   unless the person turned it on, and it only counts while [enabled] is
+ *   also on. It is its own switch because a feed list shows what you read.
  */
 data class SyncSettings(
     val enabled: Boolean = false,
@@ -26,6 +29,7 @@ data class SyncSettings(
     val database: String = "",
     val username: String = "",
     val password: String = "",
+    val feeds: Boolean = false,
 )
 
 /**
@@ -62,6 +66,8 @@ class SyncStore(context: Context) {
         database = prefs.getString(KEY_DATABASE, "").orEmpty(),
         username = prefs.getString(KEY_USERNAME, "").orEmpty(),
         password = prefs.getString(KEY_PASSWORD, null)?.let { decrypt(it) }.orEmpty(),
+        // A missing value (an older install) reads as off.
+        feeds = prefs.getBoolean(KEY_FEEDS, false),
     )
 
     /**
@@ -75,6 +81,7 @@ class SyncStore(context: Context) {
             .putString(KEY_URL, settings.url.trim())
             .putString(KEY_DATABASE, settings.database.trim())
             .putString(KEY_USERNAME, settings.username.trim())
+            .putBoolean(KEY_FEEDS, settings.feeds)
         if (settings.password.isEmpty()) {
             editor.remove(KEY_PASSWORD)
         } else {
@@ -151,6 +158,8 @@ class SyncStore(context: Context) {
         const val KEY_URL = "url"
         const val KEY_DATABASE = "database"
         const val KEY_USERNAME = "username"
+        /** The separate "also sync the feed list" switch. */
+        const val KEY_FEEDS = "feeds"
         const val KEY_PASSWORD = "password_encrypted"
 
         /** The Keystore provider name and this app's key name inside it. */

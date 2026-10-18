@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -20,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import uniffi.tuxwire_ffi.Database
+import uniffi.tuxwire_ffi.FeedRemovalRequest
 import uniffi.tuxwire_ffi.syncTestConnection
 
 /**
@@ -32,6 +34,11 @@ import uniffi.tuxwire_ffi.syncTestConnection
  *   fetched before that, and "sync now" is the only thing that runs it (there
  *   is no background sync).
  * - Only saved articles and their notes are synced; read/unread is not.
+ * - The **feed list** is synced only if its own, separate switch is on (off by
+ *   default), and only while the main switch is on. Feeds another device added
+ *   are added here; a feed another device *removed* is never removed on its
+ *   own: a question appears first, and only "yes, remove" removes it
+ *   (its articles are kept either way).
  * - The password is typed into a masked box and stored encrypted by [SyncStore]
  *   (Android Keystore). It is never shown, logged or put in messages.
  * - Changing the server address or database starts sync afresh
@@ -68,6 +75,8 @@ fun SyncScreen(
     var database by remember { mutableStateOf(saved.database) }
     var username by remember { mutableStateOf(saved.username) }
     var password by remember { mutableStateOf(saved.password) }
+    // The separate "also sync the feed list" switch (part of the draft).
+    var feeds by remember { mutableStateOf(saved.feeds) }
 
     // True while the "forget everything?" question is showing.
     var confirmingForget by rememberSaveable { mutableStateOf(false) }
@@ -76,9 +85,19 @@ fun SyncScreen(
     var isError by remember { mutableStateOf(false) }
     // True while a network step runs, so a button cannot be tapped twice.
     var busy by remember { mutableStateOf(false) }
+    // Feeds another device removed that this phone still has. Each one waits
+    // for a yes or no; nothing is removed until the person says yes.
+    var removals by remember { mutableStateOf<List<FeedRemovalRequest>>(emptyList()) }
+
+    // On opening the screen, show any removal question still waiting from an
+    // earlier sync. This reads only the local database (no network), and
+    // only when feed sync is on.
+    LaunchedEffect(saved.enabled, saved.feeds) {
+        removals = if (saved.enabled && saved.feeds) onIo { db.pendingFeedRemovals() } else emptyList()
+    }
 
     // The draft as one value, to compare with what is saved.
-    val draft = SyncSettings(enabled, url.trim(), database.trim(), username.trim(), password)
+    val draft = SyncSettings(enabled, url.trim(), database.trim(), username.trim(), password, feeds)
     val dirty = draft != saved
     // "Ready" means every box is filled, so the buttons make sense.
     val filled = draft.url.isNotEmpty() && draft.database.isNotEmpty() &&
@@ -114,6 +133,46 @@ fun SyncScreen(
                     MonoText(message, if (isError) colors.accentBreaking else colors.textMuted)
                 }
 
+                // A feed another device removed: ask about the first one. Only
+                // "yes, remove" takes it out; its articles stay either way.
+                val asked = removals.firstOrNull()
+                if (asked != null && saved.enabled && saved.feeds) {
+                    TuiPanel(title = "feed removed on another device") {
+                        MonoText(
+                            "Another device removed \"${asked.name}\" (${asked.url}). " +
+                                "Remove it from this phone too? Its articles are kept.",
+                            colors.textPrimary,
+                        )
+                        if (removals.size > 1) {
+                            MonoText("${removals.size - 1} more waiting", colors.textMuted)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            TuiButton(
+                                label = "yes, remove",
+                                enabled = !busy,
+                                onClick = {
+                                    run {
+                                        onIo { db.confirmFeedRemoval(asked.url) }
+                                        removals = removals.drop(1)
+                                        "removed \"${asked.name}\""
+                                    }
+                                },
+                            )
+                            TuiButton(
+                                label = "keep it",
+                                enabled = !busy,
+                                onClick = {
+                                    run {
+                                        onIo { db.keepFeed(asked.url) }
+                                        removals = removals.drop(1)
+                                        "kept \"${asked.name}\""
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+
                 // The question before the saved settings are wiped.
                 if (confirmingForget) {
                     TuiPanel(title = "forget sync settings?") {
@@ -135,6 +194,8 @@ fun SyncScreen(
                                     database = ""
                                     username = ""
                                     password = ""
+                                    feeds = false
+                                    removals = emptyList()
                                     // Start afresh if sync is ever set up again.
                                     run {
                                         onIo { db.resetSyncState() }
@@ -199,6 +260,23 @@ fun SyncScreen(
                 )
             }
 
+            // The separate feed-list switch, with what it does in plain words.
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MonoText("feed list:", colors.textPrimary, bold = true)
+                TuiButton(
+                    label = if (feeds) "on" else "off",
+                    enabled = !busy,
+                    onClick = { feeds = !feeds },
+                )
+            }
+            MonoText(
+                "Also copies your list of feeds (names, addresses, topics) so a feed added " +
+                    "on one device appears on the others. Your feed addresses are sent to " +
+                    "your server only if this is on. A feed another device removed is only " +
+                    "removed here if you say yes.",
+                colors.textDim,
+            )
+
             TuiField("server address (https://...)", url, { url = it }, keyboardType = KeyboardType.Uri)
             TuiField("database", database, { database = it })
             TuiField("username", username, { username = it })
@@ -234,13 +312,36 @@ fun SyncScreen(
                         run {
                             message = "syncing..."
                             isError = false
-                            "synced: " + db.syncNow(
+                            val articles = db.syncNow(
                                 saved.enabled,
                                 saved.url,
                                 saved.database,
                                 saved.username,
                                 saved.password,
                             )
+                            // The feed list, only if its own switch is saved on.
+                            if (saved.feeds) {
+                                val feedResult = db.syncFeedsNow(
+                                    saved.enabled,
+                                    saved.feeds,
+                                    saved.url,
+                                    saved.database,
+                                    saved.username,
+                                    saved.password,
+                                )
+                                removals = feedResult.removals
+                                var line = "synced: $articles; feeds: ${feedResult.report}"
+                                if (feedResult.added > 0u) {
+                                    line += "; ${feedResult.added} new feed(s) added" +
+                                        " (refresh to load their articles)"
+                                }
+                                if (feedResult.removals.isNotEmpty()) {
+                                    line += "; ${feedResult.removals.size} removal(s) to answer"
+                                }
+                                line
+                            } else {
+                                "synced: $articles"
+                            }
                         }
                     },
                 )
