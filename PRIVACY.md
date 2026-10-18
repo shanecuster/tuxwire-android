@@ -28,7 +28,11 @@ The app contacts only these places:
    articles and notes to the CouchDB server whose address, database name,
    username and password you entered. The developer has no access to it. The
    address must use `https://` (plain `http://` is allowed only for the device
-   itself). Your password is stored encrypted with the Android Keystore, never
+   itself). A second switch, **feed list** (also off by default), additionally
+   sends the name, address and topic of each of your feeds to that same server,
+   so a feed added on one device appears on the others; without that switch no
+   feed address is ever sent. A feed another device removed is only removed
+   here after you confirm. Your password is stored encrypted with the Android Keystore, never
    in plain text. **forget everything** in the sync screen (it asks first)
    wipes these settings.
 
