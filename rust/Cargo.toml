@@ -31,11 +31,12 @@ resolver = "3"
 # master can never silently break this app. To move to a newer core, change
 # this hash on purpose, then rebuild and test.
 #
-# This commit is the merge of tuxwire's `feature/read-later` branch into its
-# master: core gains Read Later (a list of links to read, synced under the main
-# sync switch, plus `fetch_page_title` for pasted links), on top of the optional
-# feed-list sync and the CouchDB sync of saved articles and notes.
-tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "875642d1e27ee58546c61c6aa2244dbb6a534ea1" }
+# This commit is the tip of tuxwire's `feature/read-marks` branch: core gains
+# the optional read-marks sync (which articles were opened, behind its own
+# switch, off by default) on top of Read Later, the optional feed-list sync and
+# the CouchDB sync of saved articles and notes. It exists on GitHub once that
+# branch has been merged and pushed.
+tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "c75ebd94154bfb7acca19b538a2b8099d04478bb" }
 
 # `anyhow` is the catch-all error type tuxwire-core returns from its functions.
 # This crate needs to name that type to convert it into the error Kotlin sees.
