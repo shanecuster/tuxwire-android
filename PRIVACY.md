@@ -1,6 +1,6 @@
 # Privacy policy: tuxwire for Android
 
-Last updated: 2026-10-15
+Last updated: 2026-10-19
 
 tuxwire is an RSS reader. It does not collect your data, and nothing you do in
 it is sent to the developer. There are no accounts, no ads, no analytics, no
@@ -9,7 +9,7 @@ tracking and no crash reporting built into the app.
 ## What stays on your device
 
 Your feeds, the articles downloaded from them, the articles you save, your
-notes and your settings are stored in the app's private storage on your phone.
+notes, your Read Later links and your settings are stored in the app's private storage on your phone.
 They are not copied to Google's cloud backups, and uninstalling the app removes
 them. The app asks for one permission only: `INTERNET`.
 
@@ -23,9 +23,17 @@ The app contacts only these places:
    `tuxwire/<version>`, and, as with any web request, the server can see your
    IP address. Those servers belong to other people and follow their own
    policies.
-2. **Your own sync server, only if you turn sync on.** Sync is off by default
+2. **The page behind a link you paste or share.** When you paste a link on the
+   Read Later screen, or share one to tuxwire, the app requests that page once
+   to read its title, so the link can be shown by name. Only the address you
+   gave is requested, only `http` and `https` addresses are, and nothing is
+   kept from the page except its title. As with any web request, that site can
+   see your IP address and follows its own policy. If you cancel, nothing is
+   saved.
+3. **Your own sync server, only if you turn sync on.** Sync is off by default
    and runs only when you tap **sync now**. When used, it sends your saved
-   articles and notes to the CouchDB server whose address, database name,
+   articles, notes and Read Later links (the address, title and whether you
+   opened it) to the CouchDB server whose address, database name,
    username and password you entered. The developer has no access to it. The
    address must use `https://` (plain `http://` is allowed only for the device
    itself). A second switch, **feed list** (also off by default), additionally
