@@ -40,7 +40,8 @@ it read; it stays on the list, drawn like a read article, until you **drop** it
 **Sync** (home screen, optional) copies saved articles, notes and the Read Later
 list to a CouchDB server you run yourself, so your devices share them. It is
 off until you turn it on and save; it only runs when you tap **sync now**; which
-feed articles you have read is not synced. The address must be `https://` (plain `http://` only for this device),
+feed articles you have read is not synced unless you turn on the separate
+**read marks** switch. The address must be `https://` (plain `http://` only for this device),
 and the password is stored encrypted with the Android Keystore, never in plain
 text. **forget everything** (asks first) wipes the saved settings.
 A second, separate switch (**feed list**, off by default) also copies your list
@@ -48,6 +49,11 @@ of feeds, so a feed you add on this phone appears in the terminal app and the
 other way round. Feeds from other devices are added here; a feed another device
 *removed* is only removed here if you tap **yes, remove** (its articles are kept
 either way). Renames, topic changes and Reddit sources are not synced.
+A third switch (**read marks**, off by default, and only while sync is on) also
+shares which articles you have opened, so one you read on your phone shows as
+read in the terminal app and the other way round. The address of each article
+opened in the last 90 days is sent to your server only if it is on; nothing is
+deleted from the server, and an article cannot be marked unread again.
 
 ## How it fits together
 

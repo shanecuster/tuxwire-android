@@ -40,7 +40,11 @@ The app contacts only these places:
    sends the name, address and topic of each of your feeds to that same server,
    so a feed added on one device appears on the others; without that switch no
    feed address is ever sent. A feed another device removed is only removed
-   here after you confirm. Your password is stored encrypted with the Android Keystore, never
+   here after you confirm. A third switch, **read marks** (also off by default),
+   additionally sends the address of each article you opened in the last 90
+   days, and when, so an article read on one device shows as read on the
+   others; without that switch nothing about which feed articles you read leaves the phone.
+   Nothing is deleted from your server. Your password is stored encrypted with the Android Keystore, never
    in plain text. **forget everything** in the sync screen (it asks first)
    wipes these settings.
 
