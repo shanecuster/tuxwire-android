@@ -14,7 +14,8 @@ colour each time you return to the home screen. Feed lists can be imported
 from and exported to OPML files (the format other feed readers use). Adding a
 feed accepts a blog's address as well as a feed address: tuxwire finds the feed
 (skipping comment feeds). tuxwire also appears in Android's Share menu, so
-sharing a page from the browser opens the add-feed form with it already checked.
+sharing a page from the browser asks what to do with the link: **read later**,
+**save**, or **add as feed** (the add-feed form, with it already checked).
 Going back keeps your place in the feed lists, the article list and the saved
 list (the saved list also keeps its search and switch); the logo / home button
 starts again at the top.
@@ -29,10 +30,17 @@ first, with a search and a notes-only filter. The same screen (and the import /
 export screen) can save everything to one Markdown file through Android's file
 picker, so it can go to Google Drive if you choose that. A switch leaves out
 saved articles that have no note.
-**Sync** (home screen, optional) copies saved articles and notes to a CouchDB
-server you run yourself, so your devices share them. It is off until you turn
-it on and save; it only runs when you tap **sync now**; read/unread is not
-synced. The address must be `https://` (plain `http://` only for this device),
+**Read later**, on the home screen, is a list of links to come back to, kept
+apart from Saved. Paste a link in its box, or share a page to tuxwire; either
+way you are asked every time whether to put it on the list, save it, or cancel.
+tuxwire looks up the page's title so the link has a name (if the page cannot be
+reached, the address is used). Tapping a link opens it in your browser and marks
+it read; it stays on the list, drawn like a read article, until you **drop** it
+(which asks first) or **save** it (which keeps it with your saved articles).
+**Sync** (home screen, optional) copies saved articles, notes and the Read Later
+list to a CouchDB server you run yourself, so your devices share them. It is
+off until you turn it on and save; it only runs when you tap **sync now**; which
+feed articles you have read is not synced. The address must be `https://` (plain `http://` only for this device),
 and the password is stored encrypted with the Android Keystore, never in plain
 text. **forget everything** (asks first) wipes the saved settings.
 A second, separate switch (**feed list**, off by default) also copies your list

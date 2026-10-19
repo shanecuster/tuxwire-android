@@ -20,6 +20,9 @@
 //! * **The database** (`Database`) -- one object the app opens once. Through it
 //!   the app reads topics, feeds and articles, adds and removes feeds, marks
 //!   articles read, saves settings, and refreshes feeds from the network.
+//! * **Read Later** (`list_read_later`, `add_read_later`, `save_link`, ...,
+//!   plus `is_web_address` and `fetch_link_title` for pasted links) -- the
+//!   list of links to read, which sync shares through the main sync switch.
 //! * **A feed preview** (`preview_feed`) -- looks up the feed for an address
 //!   (a feed address, or a web page that has a feed) so the "add feed" screen
 //!   can check it before saving.
@@ -52,9 +55,9 @@ use tuxwire_core::fetch_report::FetchReport;
 use tuxwire_core::fetchers::{SourceType, configured_sources, fetch_all};
 use tuxwire_core::models::Article;
 use tuxwire_core::opml::{parse_opml, write_opml};
-use tuxwire_core::storage::{Feed, FeedEntry, Scope, Storage};
+use tuxwire_core::storage::{Feed, FeedEntry, ReadLaterItem, Scope, Storage};
 use tuxwire_core::sync::SyncConfig;
-use tuxwire_core::sync::feeds::{feed_key, sync_feeds};
+use tuxwire_core::sync::feeds::{feed_key, is_syncable_url, sync_feeds};
 use tuxwire_core::theme::{BUILTIN_THEMES, DEFAULT_THEME, Palette, Rgb, picker_order};
 
 // ---------------------------------------------------------------------------
@@ -875,6 +878,114 @@ impl Database {
         let storage = self.lock()?;
         Ok(storage.dismiss_feed_removal(&url)?)
     }
+
+    /// The Read Later list, newest first. Opened items stay on it (with
+    /// `read` set) until the person discards or saves them.
+    pub fn list_read_later(&self) -> Result<Vec<ReadLaterEntry>, FfiError> {
+        let storage = self.lock()?;
+        // `into_iter` takes each item by value, `map` converts it, `collect`
+        // gathers the results into the `Vec` Kotlin receives.
+        Ok(storage
+            .list_read_later()?
+            .into_iter()
+            .map(ReadLaterEntry::from)
+            .collect())
+    }
+
+    /// Puts a link on the Read Later list. `title` may be empty (the address
+    /// is then used as the title).
+    ///
+    /// Returns `true` when the link is newly on the list and `false` when it
+    /// was already there (nothing changes). Fails with a readable message when
+    /// `url` is not an ordinary `http://` or `https://` address.
+    pub fn add_read_later(&self, title: String, url: String) -> Result<bool, FfiError> {
+        let storage = self.lock()?;
+        Ok(storage.add_read_later(&title, &url)?)
+    }
+
+    /// Marks a Read Later link as opened. It stays on the list. Returns `true`
+    /// when something changed and `false` when it was not on the list or was
+    /// already marked.
+    pub fn mark_read_later_read(&self, url: String) -> Result<bool, FfiError> {
+        let storage = self.lock()?;
+        Ok(storage.mark_read_later_read(&url)?)
+    }
+
+    /// Takes a link off the Read Later list (the other devices drop it too).
+    /// Returns `true` when it was on the list.
+    ///
+    /// This does not ask for confirmation; the screen must, as with un-saving.
+    pub fn discard_read_later(&self, url: String) -> Result<bool, FfiError> {
+        let storage = self.lock()?;
+        Ok(storage.discard_read_later(&url)?)
+    }
+
+    /// Saves a Read Later link permanently and takes it off the list. Returns
+    /// the saved article's ID. An article already saved keeps its note.
+    /// Fails with a readable message when the link is not on the list.
+    pub fn promote_read_later(&self, url: String) -> Result<i64, FfiError> {
+        let storage = self.lock()?;
+        Ok(storage.promote_read_later(&url)?)
+    }
+
+    /// Saves a link permanently without putting it on the Read Later list: the
+    /// "Save" answer for a pasted or shared link. Returns the saved article's
+    /// ID. If the link was on the list it leaves it. Fails with a readable
+    /// message when `url` is not an ordinary web address.
+    pub fn save_link(&self, title: String, url: String) -> Result<i64, FfiError> {
+        let storage = self.lock()?;
+        Ok(storage.save_link(&title, &url)?)
+    }
+}
+
+/// One link on the Read Later list, as the app shows it.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ReadLaterEntry {
+    /// The link's web address. Pass it back to the other Read Later methods.
+    pub url: String,
+    /// The page's title, or the address when no title was found.
+    pub title: String,
+    /// When it was added, in seconds since 1970.
+    pub added_at: i64,
+    /// Whether the person has opened it. Opened items stay on the list.
+    pub read: bool,
+}
+
+/// Converts core's list item into the record Kotlin sees.
+impl From<ReadLaterItem> for ReadLaterEntry {
+    /// Moves the fields across; the date becomes plain seconds.
+    fn from(item: ReadLaterItem) -> ReadLaterEntry {
+        ReadLaterEntry {
+            url: item.url,
+            title: item.title,
+            added_at: item.added_at.timestamp(),
+            read: item.read,
+        }
+    }
+}
+
+/// Whether `text` is an ordinary web address (`http://` or `https://`, with a
+/// host). The app uses this to decide whether pasted or shared text can go on
+/// the Read Later list, so Kotlin and core always agree on what counts.
+#[uniffi::export]
+pub fn is_web_address(text: String) -> bool {
+    is_syncable_url(&text)
+}
+
+/// Looks up the title of the web page at `url`, for a pasted or shared link.
+///
+/// This is a courtesy: it returns `None` whenever there is no usable title
+/// (the page is unreachable, is not HTML, or has no `<title>`), and the caller
+/// then uses the address instead. It reaches out to the link's own site only,
+/// and gives up after ten seconds.
+#[uniffi::export(async_runtime = "tokio")]
+pub async fn fetch_link_title(url: String) -> Option<String> {
+    // `.ok()` turns an error into `None`; `.flatten()` merges the two layers
+    // of `Option` (a successful lookup that found no title is `Ok(None)`).
+    tuxwire_core::fetchers::link_title::fetch_page_title(&url)
+        .await
+        .ok()
+        .flatten()
 }
 
 /// One feed that another device removed and this device still has. The app
@@ -1944,6 +2055,174 @@ mod tests {
         assert_eq!(summary.messages.len(), 1);
         assert!(summary.messages[0].starts_with("Dead: "));
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The Read Later list round-trips through the bridge: adding, a duplicate,
+    /// a refused address, opening (stays listed), and discarding.
+    #[test]
+    fn read_later_list_round_trip() {
+        let (db, dir) = temp_database();
+        assert!(db.list_read_later().unwrap().is_empty());
+
+        // A new link is added; the same link again is not.
+        assert!(
+            db.add_read_later("A post".into(), "https://a.example/p".into())
+                .unwrap()
+        );
+        assert!(
+            !db.add_read_later("A post".into(), "https://a.example/p".into())
+                .unwrap()
+        );
+
+        // Addresses that are not web addresses are refused with a message.
+        for bad in ["file:///etc/passwd", "javascript:alert(1)", "nonsense", ""] {
+            assert!(db.add_read_later("x".into(), bad.into()).is_err(), "{bad}");
+        }
+
+        // An empty title becomes the address.
+        db.add_read_later("  ".into(), "https://b.example/q".into())
+            .unwrap();
+        let list = db.list_read_later().unwrap();
+        assert_eq!(list.len(), 2);
+        let untitled = list
+            .iter()
+            .find(|e| e.url == "https://b.example/q")
+            .unwrap();
+        assert_eq!(untitled.title, "https://b.example/q");
+
+        // Opening marks it read and keeps it listed; doing it twice is a no-op.
+        assert!(
+            db.mark_read_later_read("https://a.example/p".into())
+                .unwrap()
+        );
+        assert!(
+            !db.mark_read_later_read("https://a.example/p".into())
+                .unwrap()
+        );
+        let list = db.list_read_later().unwrap();
+        assert!(
+            list.iter()
+                .find(|e| e.url == "https://a.example/p")
+                .unwrap()
+                .read
+        );
+        assert!(!untitled_read(&list));
+
+        // Discarding removes it; discarding again reports nothing was there.
+        assert!(db.discard_read_later("https://a.example/p".into()).unwrap());
+        assert!(!db.discard_read_later("https://a.example/p".into()).unwrap());
+        assert_eq!(db.list_read_later().unwrap().len(), 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Whether the "b.example" item in `list` is marked read (a test helper).
+    fn untitled_read(list: &[ReadLaterEntry]) -> bool {
+        list.iter()
+            .find(|e| e.url == "https://b.example/q")
+            .map(|e| e.read)
+            .unwrap()
+    }
+
+    /// Saving a Read Later link makes it a saved article and takes it off the
+    /// list; saving a pasted link directly does the same without the list, and
+    /// saving a link that is already saved keeps its note.
+    #[test]
+    fn read_later_links_can_be_saved() {
+        let (db, dir) = temp_database();
+
+        // From the list: it leaves the list and appears in Saved.
+        db.add_read_later("Cool tool".into(), "https://a.example/tool".into())
+            .unwrap();
+        let id = db
+            .promote_read_later("https://a.example/tool".into())
+            .unwrap();
+        assert!(db.list_read_later().unwrap().is_empty());
+        let saved = db.list_saved_articles().unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].id, id);
+        assert_eq!(saved[0].title, "Cool tool");
+
+        // Promoting something that is not listed is a readable error.
+        assert!(
+            db.promote_read_later("https://a.example/tool".into())
+                .is_err()
+        );
+
+        // Directly: saved without ever being listed.
+        let direct = db
+            .save_link("Direct".into(), "https://c.example/d".into())
+            .unwrap();
+        assert!(db.list_read_later().unwrap().is_empty());
+        assert_eq!(db.list_saved_articles().unwrap().len(), 2);
+
+        // A note on a saved link survives saving the same link again.
+        db.set_note(direct, Some("remember this".into())).unwrap();
+        let again = db
+            .save_link("Direct".into(), "https://c.example/d".into())
+            .unwrap();
+        assert_eq!(again, direct);
+        let note = db
+            .list_saved_articles()
+            .unwrap()
+            .into_iter()
+            .find(|a| a.id == direct)
+            .unwrap()
+            .note;
+        assert_eq!(note.as_deref(), Some("remember this"));
+
+        // A refused address saves nothing.
+        assert!(
+            db.save_link("x".into(), "file:///etc/passwd".into())
+                .is_err()
+        );
+        assert_eq!(db.list_saved_articles().unwrap().len(), 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `is_web_address` accepts ordinary web addresses only, and the title
+    /// lookup gives `None` (never an error or a hang) when a page cannot be
+    /// reached or is not a web address.
+    #[tokio::test]
+    async fn web_addresses_and_title_lookup() {
+        assert!(is_web_address("https://example.com/a?b=c".into()));
+        assert!(is_web_address("  http://example.com ".into()));
+        for bad in [
+            "file:///x",
+            "javascript:alert(1)",
+            "example.com",
+            "",
+            "https://",
+        ] {
+            assert!(!is_web_address(bad.into()), "{bad}");
+        }
+        assert_eq!(fetch_link_title("nonsense".into()).await, None);
+        assert_eq!(fetch_link_title("http://127.0.0.1:9/".into()).await, None);
+    }
+
+    /// Read Later sync is off unless the main switch is on: with it off the
+    /// sync refuses before any network use, and the list is untouched.
+    #[tokio::test]
+    async fn read_later_sync_follows_the_main_switch() {
+        let (db, dir) = temp_database();
+        db.add_read_later("A".into(), "https://a.example/p".into())
+            .unwrap();
+        let err = db
+            .sync_now(
+                false,
+                "https://couch.invalid".into(),
+                "tuxwire".into(),
+                "user".into(),
+                "secret-pass".into(),
+            )
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(!err.contains("secret-pass"), "password leaked: {err}");
+        assert!(!err.contains("couch.invalid"), "address leaked: {err}");
+        assert_eq!(db.list_read_later().unwrap().len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

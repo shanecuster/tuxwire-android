@@ -4,9 +4,13 @@ Feeds and reading
 - Add a feed by its address or by a blog's address; tuxwire finds the feed for you.
 - Browse feeds by topic, then articles, then a plain-text summary of each one.
 - Open the full article in your browser when you want it.
-- Share a page from your browser to tuxwire to add its feed.
+- Share a page from your browser to tuxwire, then choose each time: read it later, save it, or add its feed.
 - Import and export your feed list as OPML, the format other feed readers use.
 - Pinned top and bottom bars keep everything within reach of one hand.
+
+Read later
+- Keep a list of links to open later: paste one in, or share it from your browser. Opened links stay on the list, drawn like read articles, until you drop them (it asks first) or save them.
+- tuxwire reads the page's title so a link has a name. That is the only thing it fetches from the page.
 
 Saved articles and notes
 - Save any article and attach a note to it.
@@ -14,7 +18,7 @@ Saved articles and notes
 - Export every saved article and note to one Markdown file, through Android's own file picker.
 
 Optional sync to your own server
-- Sync is off until you turn it on. It copies only your saved articles and notes to a CouchDB server that you run yourself, and only when you tap "sync now". A separate switch, also off by default, can copy your feed list too, so feeds you add on one device appear on the others. Nothing is removed without asking you.
+- Sync is off until you turn it on. It copies only your saved articles, notes and Read Later links to a CouchDB server that you run yourself, and only when you tap "sync now". A separate switch, also off by default, can copy your feed list too, so feeds you add on one device appear on the others. Nothing is removed without asking you.
 - The server address must use https, and the password is stored encrypted on the phone using the Android Keystore.
 
 Privacy
