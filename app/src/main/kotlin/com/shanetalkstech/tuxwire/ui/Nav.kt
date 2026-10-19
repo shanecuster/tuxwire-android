@@ -14,8 +14,10 @@ import androidx.compose.runtime.saveable.Saver
  * articles), then Article (one article's summary). [AddFeed] opens on top of
  * either of the first two, so it never sits beside [Article] in the stack and
  * the two can share a depth. [Opml] (import and export), [Sync] (optional
- * sync settings) and [Saved] (saved articles and notes) open from home; an article opened from [Saved] goes to
- * [Article] directly.
+ * sync settings), [Saved] (saved articles and notes) and [ReadLater] (links to
+ * read later) open from home; an article opened from [Saved] goes to
+ * [Article] directly. [Link] is the question asked about one link, whether it
+ * was pasted on the [ReadLater] screen or shared from another app.
  *
  * @property depth how far "to the right" this screen sits. Used to slide
  *   forward (towards a bigger depth) or backward when switching screens.
@@ -33,6 +35,9 @@ sealed class Screen(val depth: Int) {
 
     /** The optional sync settings. */
     data object Sync : Screen(1)
+
+    /** The Read Later list: links saved to read later, and the paste box. */
+    data object ReadLater : Screen(1)
 
     /** The feeds filed under [topic]. */
     data class Feeds(val topic: String) : Screen(1)
@@ -56,6 +61,18 @@ sealed class Screen(val depth: Int) {
     data class AddFeed(val topic: String, val address: String = "") : Screen(3)
 
     /**
+     * The question about one link: read it later, save it, or (when it was
+     * shared from another app) add it as a feed. [address] is the link,
+     * [titleHint] a title that came with it (empty for none), and [fromShare]
+     * says it arrived through Android's Share menu, which adds the feed choice.
+     */
+    data class Link(
+        val address: String,
+        val titleHint: String = "",
+        val fromShare: Boolean = false,
+    ) : Screen(2)
+
+    /**
      * Turns this screen into text so Android can save it (for example across
      * a screen rotation). A kind letter, then each field, joined by [SEPARATOR].
      */
@@ -64,6 +81,9 @@ sealed class Screen(val depth: Int) {
         Opml -> "O"
         Saved -> "S"
         Sync -> "Y"
+        ReadLater -> "L"
+        is Link -> listOf("K", address, titleHint, if (fromShare) "1" else "0")
+            .joinToString(SEPARATOR)
         is Feeds -> listOf("F", topic).joinToString(SEPARATOR)
         is Articles -> listOf("A", topic, feedName, feedUrl).joinToString(SEPARATOR)
         is Article -> listOf("R", topic, feedName, feedUrl, articleId.toString())
@@ -89,6 +109,12 @@ sealed class Screen(val depth: Int) {
                 "O" -> Opml
                 "S" -> Saved
                 "Y" -> Sync
+                "L" -> ReadLater
+                "K" -> Link(
+                    parts.getOrElse(1) { "" },
+                    parts.getOrElse(2) { "" },
+                    parts.getOrElse(3) { "0" } == "1",
+                )
                 "F" -> Feeds(parts.getOrElse(1) { "" })
                 "A" -> Articles(
                     parts.getOrElse(1) { "" },

@@ -103,3 +103,23 @@ fun firstWebAddress(text: String): String {
     val found = Regex("""https?://\S+""", RegexOption.IGNORE_CASE).find(text)
     return (found?.value ?: text).trim().trimEnd('.', ',', ';', ':', '!', '?')
 }
+
+/**
+ * The words that came with a shared link, if any: the shared text with the web
+ * address taken out ("Great post https://example.com/p" gives "Great post").
+ * Many apps share "title, then address", so this is usually the page's title.
+ * Quote marks, dashes and spaces around it are trimmed. Returns an empty string
+ * when the text was only an address, or contained no address at all (then the
+ * whole text is not a title but a mistake, and the link screen says so).
+ */
+fun sharedTitleHint(text: String): String {
+    // Without an address in the text there is nothing to separate it from.
+    val address = Regex("""https?://\S+""", RegexOption.IGNORE_CASE).find(text) ?: return ""
+    // Everything except the address, joined back up: the words before it and
+    // the words after it.
+    val rest = (text.substring(0, address.range.first) + " " +
+        text.substring(address.range.last + 1)).trim()
+    // Keep one line only (some apps add blank lines) and trim decoration.
+    return rest.lines().map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" ")
+        .trim('"', '\'', '-', '\u2013', '\u2014', ' ')
+}
