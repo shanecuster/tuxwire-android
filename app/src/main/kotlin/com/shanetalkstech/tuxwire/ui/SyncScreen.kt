@@ -33,7 +33,9 @@ import uniffi.tuxwire_ffi.syncTestConnection
  * - Sync is **off** until the person turns it on and saves. Nothing is sent or
  *   fetched before that, and "sync now" is the only thing that runs it (there
  *   is no background sync).
- * - Only saved articles and their notes are synced; read/unread is not.
+ * - The main switch syncs saved articles, their notes and the Read Later list
+ *   (links to read later, and whether each was opened). Which feed articles you
+ *   have read is not synced.
  * - The **feed list** is synced only if its own, separate switch is on (off by
  *   default), and only while the main switch is on. Feeds another device added
  *   are added here; a feed another device *removed* is never removed on its
@@ -178,8 +180,8 @@ fun SyncScreen(
                     TuiPanel(title = "forget sync settings?") {
                         MonoText(
                             "This turns sync off and deletes the saved address, login and " +
-                                "password from this phone. Your saved articles and notes, here " +
-                                "and on your server, are not touched.",
+                                "password from this phone. Your saved articles, notes and Read Later " +
+                                "links, here and on your server, are not touched.",
                             colors.textPrimary,
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -244,8 +246,9 @@ fun SyncScreen(
         ) {
             // What this does, in plain words.
             MonoText(
-                "Optional. Copies your saved articles and notes to a CouchDB server " +
-                    "that you run, so your devices share them. Read/unread is not synced. " +
+                "Optional. Copies your saved articles, notes and Read Later links to a " +
+                    "CouchDB server that you run, so your devices share them. Which feed " +
+                    "articles you have read is not synced. " +
                     "Nothing is sent unless sync is on and you tap \"sync now\".",
                 colors.textMuted,
             )
