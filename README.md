@@ -15,6 +15,9 @@ from and exported to OPML files (the format other feed readers use). Adding a
 feed accepts a blog's address as well as a feed address: tuxwire finds the feed
 (skipping comment feeds). tuxwire also appears in Android's Share menu, so
 sharing a page from the browser opens the add-feed form with it already checked.
+Going back keeps your place in the feed lists, the article list and the saved
+list (the saved list also keeps its search and switch); the logo / home button
+starts again at the top.
 Saving a new feed downloads its articles straight away, so it never looks empty.
 Importing an OPML file does the same once, for all the feeds it added.
 Every article has a **save** button, and its page lets you add, edit or delete a

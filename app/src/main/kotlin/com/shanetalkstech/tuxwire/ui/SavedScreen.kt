@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +25,13 @@ import uniffi.tuxwire_ffi.SavedArticle
 private const val NOTE_PREVIEW_CHARS = 160
 
 /**
+ * A character that never appears in typed text, used to join the "notes only"
+ * switch and the search text into one string (see [encodeFilter]). It is the
+ * Unit Separator control character, as in `Screen`.
+ */
+private const val FILTER_SEPARATOR = "\u001F"
+
+/**
  * Your saved articles and notes in one place.
  *
  * Articles that have a note come first (newest first), then the rest. Each row
@@ -33,7 +41,14 @@ private const val NOTE_PREVIEW_CHARS = 160
  * where the note can be read in full, edited or deleted. At the bottom is the
  * panel that exports everything to one Markdown file.
  *
+ * Coming back from an article puts the list where it was, with the same search
+ * text and switch, because a position in a filtered list only means something
+ * for that same filter.
+ *
  * @param db the open database.
+ * @param scrollMemory remembers where the list was scrolled to and how it was
+ *   filtered.
+ * @param scrollKey which entry of [scrollMemory] belongs to this list.
  * @param onHome jumps back to the home screen.
  * @param onBack goes back one screen.
  * @param onOpenArticle opens the article page for the tapped row.
@@ -41,6 +56,8 @@ private const val NOTE_PREVIEW_CHARS = 160
 @Composable
 fun SavedScreen(
     db: Database,
+    scrollMemory: ScrollMemory,
+    scrollKey: String,
     onHome: () -> Unit,
     onBack: () -> Unit,
     onOpenArticle: (SavedArticle) -> Unit,
@@ -54,9 +71,29 @@ fun SavedScreen(
         value = runCatching { onIo { db.listSavedArticles() } }
     }
 
-    // The search text and the "notes only" switch. Saved across rotation.
-    var query by rememberSaveable { mutableStateOf("") }
-    var notesOnly by rememberSaveable { mutableStateOf(false) }
+    // What the list looked like when it was last left, if this screen was
+    // reached by "back" (otherwise `null`). Read once, before the tracker below
+    // starts writing the new position over it.
+    val saved = remember(scrollKey) { scrollMemory.get(scrollKey) }
+    val savedFilter = remember(saved) { decodeFilter(saved?.extra.orEmpty()) }
+
+    // The search text and the "notes only" switch. Saved across rotation, and
+    // started from the remembered values when coming back from an article.
+    var query by rememberSaveable { mutableStateOf(savedFilter.second) }
+    var notesOnly by rememberSaveable { mutableStateOf(savedFilter.first) }
+
+    // The list's scroll position, started from the remembered one (or the top).
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = saved?.first ?: 0,
+        initialFirstVisibleItemScrollOffset = saved?.offset ?: 0,
+    )
+    // Keep writing down where the list is, together with its filter.
+    TrackLazyScroll(
+        state = listState,
+        memory = scrollMemory,
+        key = scrollKey,
+        extra = encodeFilter(notesOnly, query),
+    )
 
     PinnedLayout(
         top = { TopBar(path = "tuxwire / saved", onHome = onHome) },
@@ -77,6 +114,7 @@ fun SavedScreen(
                 // `LazyColumn` only builds the rows that are on screen, so a
                 // long list stays fast. Each `item { }` is one fixed block.
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
@@ -149,6 +187,24 @@ fun SavedScreen(
             }
         }
     }
+}
+
+/**
+ * Turns the "notes only" switch and the search text into one string, so they
+ * can be stored with the scroll position (see [ScrollPosition.extra]).
+ */
+private fun encodeFilter(notesOnly: Boolean, query: String): String =
+    (if (notesOnly) "1" else "0") + FILTER_SEPARATOR + query
+
+/**
+ * The reverse of [encodeFilter]: returns the switch and the search text. An
+ * empty or damaged string means "no filter" (switch off, no search text).
+ */
+private fun decodeFilter(text: String): Pair<Boolean, String> {
+    // `limit = 2` cuts at the first separator only, so a search text that happens
+    // to contain the separator character stays in one piece.
+    val parts = text.split(FILTER_SEPARATOR, limit = 2)
+    return if (parts.size == 2) Pair(parts[0] == "1", parts[1]) else Pair(false, "")
 }
 
 /**
