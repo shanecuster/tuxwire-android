@@ -55,6 +55,7 @@ import uniffi.tuxwire_ffi.FeedInfo
  * @param onOpenTopic called with a topic's name when a topic label is tapped.
  * @param onOpenOpml opens the import / export screen (home only).
  * @param onOpenSaved opens the saved articles and notes screen (home only).
+ * @param onOpenReadLater opens the Read Later list (home only).
  * @param onOpenSync opens the optional sync settings (home only).
  * @param onAddFeed called when "+ add feed" is tapped.
  */
@@ -73,6 +74,7 @@ fun FeedsScreen(
     onOpenTopic: (String) -> Unit,
     onOpenOpml: () -> Unit,
     onOpenSaved: () -> Unit,
+    onOpenReadLater: () -> Unit,
     onOpenSync: () -> Unit,
     onAddFeed: () -> Unit,
 ) {
@@ -90,6 +92,17 @@ fun FeedsScreen(
     val feeds by produceState<Result<List<FeedInfo>>?>(null, db, topic, version) {
         value = runCatching {
             onIo { if (topic == null) db.listAllFeeds() else db.listFeedsInTopic(topic) }
+        }
+    }
+
+    // How many unread links are on the Read Later list, for the home screen's
+    // "read later (3)" label. Only home shows it. A failure just hides the
+    // number (0), since the list itself reports errors when opened.
+    val readLaterCount by produceState(0, db, topic) {
+        value = if (topic == null) {
+            runCatching { onIo { db.listReadLater().count { !it.read } } }.getOrDefault(0)
+        } else {
+            0
         }
     }
 
@@ -157,19 +170,31 @@ fun FeedsScreen(
                             .padding(vertical = 6.dp),
                     )
                 }
-                // The way in to saved articles and notes, kept on its own line so
-                // it is easy to find.
-                MonoText(
-                    text = "saved articles & notes",
-                    color = colors.accentSaved,
-                    size = 12.sp,
-                    bold = true,
-                    centered = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onOpenSaved)
-                        .padding(vertical = 6.dp),
-                )
+                // The ways in to Read Later and to saved articles and notes,
+                // kept on their own line so they are easy to find.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    MonoText(
+                        text = if (readLaterCount > 0) "read later ($readLaterCount)" else "read later",
+                        color = colors.accentUnread,
+                        size = 12.sp,
+                        bold = true,
+                        modifier = Modifier
+                            .clickable(onClick = onOpenReadLater)
+                            .padding(vertical = 6.dp),
+                    )
+                    MonoText(
+                        text = "saved articles & notes",
+                        color = colors.accentSaved,
+                        size = 12.sp,
+                        bold = true,
+                        modifier = Modifier
+                            .clickable(onClick = onOpenSaved)
+                            .padding(vertical = 6.dp),
+                    )
+                }
             } else {
                 TopBar(path = "tuxwire / $topic", onHome = onHome)
             }

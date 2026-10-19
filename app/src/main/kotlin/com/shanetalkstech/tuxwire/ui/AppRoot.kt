@@ -44,7 +44,8 @@ private const val THEME_SETTING = "theme"
  *
  * @param sharedText text another app shared to tuxwire through Android's Share
  *   menu (normally a web address), or `null` when nothing was shared. When it
- *   arrives the add-feed form opens with that address filled in and checked.
+ *   arrives the question about the link opens (read later, save, or add as a
+ *   feed).
  * @param onSharedTextHandled called once the shared text has been acted on, so
  *   the activity can forget it (otherwise it would be acted on again).
  */
@@ -134,12 +135,20 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
         scrollMemory.keepOnly(stack.map { it.encode() }.toSet())
     }
 
-    // Something was shared to tuxwire: show the add-feed form on top of home,
-    // with the address filled in. `LaunchedEffect(sharedText)` runs whenever
+    // Something was shared to tuxwire: show the question about the link on top
+    // of home (read later, save, or add as a feed). A title that came with the
+    // link is passed along. `LaunchedEffect(sharedText)` runs whenever
     // `sharedText` changes to a new value, including the first time.
     LaunchedEffect(sharedText) {
         if (sharedText != null) {
-            stack = listOf(Screen.Home, Screen.AddFeed(topic = "", address = firstWebAddress(sharedText)))
+            stack = listOf(
+                Screen.Home,
+                Screen.Link(
+                    address = firstWebAddress(sharedText),
+                    titleHint = sharedTitleHint(sharedText),
+                    fromShare = true,
+                ),
+            )
             onSharedTextHandled()
         }
     }
@@ -213,6 +222,7 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                             onOpenTopic = { push(Screen.Feeds(it)) },
                             onOpenOpml = { push(Screen.Opml) },
                             onOpenSaved = { push(Screen.Saved) },
+                            onOpenReadLater = { push(Screen.ReadLater) },
                             onOpenSync = { push(Screen.Sync) },
                             onAddFeed = { push(Screen.AddFeed("")) },
                         )
@@ -240,6 +250,43 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                             onBack = pop,
                             onOpenArticle = { push(Screen.Article("saved", it.source, "", it.id)) },
                         )
+                        // The Read Later list, with the paste box. Pasting a link
+                        // opens the question about it.
+                        Screen.ReadLater -> ReadLaterScreen(
+                            db = db,
+                            scrollMemory = scrollMemory,
+                            scrollKey = screen.encode(),
+                            onHome = goHome,
+                            onBack = pop,
+                            onOpenLink = { push(Screen.Link(address = it)) },
+                        )
+                        // The question about one link, pasted or shared.
+                        is Screen.Link -> LinkScreen(
+                            db = db,
+                            address = screen.address,
+                            titleHint = screen.titleHint,
+                            fromShare = screen.fromShare,
+                            onHome = goHome,
+                            onBack = pop,
+                            // Replace this screen with the add-feed form, so
+                            // "back" from there does not return to the question.
+                            onAddAsFeed = {
+                                stack = stack.dropLast(1) + Screen.AddFeed("", screen.address)
+                            },
+                            // Show the list with the new link on it: if the
+                            // question was opened from the list, just go back
+                            // to it (it reloads); if it was shared from another
+                            // app, put the list in this screen's place.
+                            onAddedToList = {
+                                if (stack.getOrNull(stack.size - 2) == Screen.ReadLater) {
+                                    pop()
+                                } else {
+                                    stack = stack.dropLast(1) + Screen.ReadLater
+                                }
+                            },
+                            // Show the Saved list, in this screen's place.
+                            onSaved = { stack = stack.dropLast(1) + Screen.Saved },
+                        )
                         // One topic's feeds.
                         is Screen.Feeds -> FeedsScreen(
                             db = db,
@@ -255,6 +302,7 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                             onOpenTopic = {},
                             onOpenOpml = {},
                             onOpenSaved = {},
+                            onOpenReadLater = {},
                             onOpenSync = {},
                             onAddFeed = { push(Screen.AddFeed(screen.topic)) },
                         )
