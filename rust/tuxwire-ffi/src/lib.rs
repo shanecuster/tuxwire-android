@@ -1057,18 +1057,21 @@ impl Database {
         self.refresh(feeds).await
     }
 
-    /// Runs one optional CouchDB sync of saved articles and notes and returns a
-    /// one-line summary such as "2 sent, 1 received".
+    /// Runs one optional CouchDB sync of saved articles, notes and the Read
+    /// Later list, and returns a one-line summary such as "2 sent, 1 received".
     ///
     /// Kotlin passes the settings in on every call and keeps the password
     /// encrypted on its side; this crate never stores any of it. `enabled` is
     /// the on/off switch: while it is `false`, core refuses to touch the
     /// network, so a bug in the screen cannot make sync run by accident.
+    /// `read_marks` is the separate, off-by-default switch for sharing which
+    /// articles were opened; it does nothing unless `enabled` is also `true`.
     /// Error text comes from core's fixed phrases and never contains the
     /// address or the password.
     pub async fn sync_now(
         &self,
         enabled: bool,
+        read_marks: bool,
         url: String,
         database: String,
         username: String,
@@ -1076,7 +1079,9 @@ impl Database {
     ) -> Result<String, FfiError> {
         // Build the settings object. The password is moved into it and is
         // hidden from `Debug` output.
-        let config = SyncConfig::new(enabled, url, database, username, password);
+        // `with_read_marks` turns on the separate opened-articles switch.
+        let config =
+            SyncConfig::new(enabled, url, database, username, password).with_read_marks(read_marks);
         // `&self.storage` is the lock itself: core takes it only briefly, and
         // never holds it while waiting on the network.
         let report = tuxwire_core::sync::sync_now(&self.storage, &config).await?;
@@ -1802,6 +1807,7 @@ mod tests {
         let off = db
             .sync_now(
                 false,
+                false,
                 "https://couch.invalid".into(),
                 "tuxwire".into(),
                 "user".into(),
@@ -2212,6 +2218,7 @@ mod tests {
         let err = db
             .sync_now(
                 false,
+                false,
                 "https://couch.invalid".into(),
                 "tuxwire".into(),
                 "user".into(),
@@ -2223,6 +2230,30 @@ mod tests {
         assert!(!err.contains("secret-pass"), "password leaked: {err}");
         assert!(!err.contains("couch.invalid"), "address leaked: {err}");
         assert_eq!(db.list_read_later().unwrap().len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Read marks ride on the main switch: asking for them while sync itself is
+    /// off is refused before any network use, without leaking the address or
+    /// the password, and what has been read stays read.
+    #[tokio::test]
+    async fn read_marks_need_the_main_switch() {
+        let (db, first, _second, dir) = database_with_two_articles().await;
+        db.mark_read(first).unwrap();
+        let err = db
+            .sync_now(
+                false,
+                true,
+                "https://couch.invalid".into(),
+                "tuxwire".into(),
+                "user".into(),
+                "secret-pass".into(),
+            )
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(!err.contains("secret-pass"), "password leaked: {err}");
+        assert!(!err.contains("couch.invalid"), "address leaked: {err}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

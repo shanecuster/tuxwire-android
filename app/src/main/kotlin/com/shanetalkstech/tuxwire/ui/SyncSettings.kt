@@ -22,6 +22,9 @@ import javax.crypto.spec.GCMParameterSpec
  * @property feeds the separate switch for syncing the feed list too. `false`
  *   unless the person turned it on, and it only counts while [enabled] is
  *   also on. It is its own switch because a feed list shows what you read.
+ * @property readMarks the separate switch for syncing which articles you have
+ *   opened. `false` unless the person turned it on, and it only counts while
+ *   [enabled] is also on. Its own switch because it records what you read.
  */
 data class SyncSettings(
     val enabled: Boolean = false,
@@ -30,6 +33,7 @@ data class SyncSettings(
     val username: String = "",
     val password: String = "",
     val feeds: Boolean = false,
+    val readMarks: Boolean = false,
 )
 
 /**
@@ -68,6 +72,7 @@ class SyncStore(context: Context) {
         password = prefs.getString(KEY_PASSWORD, null)?.let { decrypt(it) }.orEmpty(),
         // A missing value (an older install) reads as off.
         feeds = prefs.getBoolean(KEY_FEEDS, false),
+        readMarks = prefs.getBoolean(KEY_READ_MARKS, false),
     )
 
     /**
@@ -82,6 +87,7 @@ class SyncStore(context: Context) {
             .putString(KEY_DATABASE, settings.database.trim())
             .putString(KEY_USERNAME, settings.username.trim())
             .putBoolean(KEY_FEEDS, settings.feeds)
+            .putBoolean(KEY_READ_MARKS, settings.readMarks)
         if (settings.password.isEmpty()) {
             editor.remove(KEY_PASSWORD)
         } else {
@@ -160,6 +166,8 @@ class SyncStore(context: Context) {
         const val KEY_USERNAME = "username"
         /** The separate "also sync the feed list" switch. */
         const val KEY_FEEDS = "feeds"
+        /** The separate "also sync which articles I opened" switch. */
+        const val KEY_READ_MARKS = "read_marks"
         const val KEY_PASSWORD = "password_encrypted"
 
         /** The Keystore provider name and this app's key name inside it. */

@@ -35,7 +35,9 @@ import uniffi.tuxwire_ffi.syncTestConnection
  *   is no background sync).
  * - The main switch syncs saved articles, their notes and the Read Later list
  *   (links to read later, and whether each was opened). Which feed articles you
- *   have read is not synced.
+ *   have read is synced only if the **read marks** switch is on too (off by
+ *   default, and only while the main switch is on): the address of each article
+ *   opened in the last 90 days is then sent to your server.
  * - The **feed list** is synced only if its own, separate switch is on (off by
  *   default), and only while the main switch is on. Feeds another device added
  *   are added here; a feed another device *removed* is never removed on its
@@ -79,6 +81,8 @@ fun SyncScreen(
     var password by remember { mutableStateOf(saved.password) }
     // The separate "also sync the feed list" switch (part of the draft).
     var feeds by remember { mutableStateOf(saved.feeds) }
+    // The separate "also sync which articles I opened" switch (part of the draft).
+    var readMarks by remember { mutableStateOf(saved.readMarks) }
 
     // True while the "forget everything?" question is showing.
     var confirmingForget by rememberSaveable { mutableStateOf(false) }
@@ -99,7 +103,9 @@ fun SyncScreen(
     }
 
     // The draft as one value, to compare with what is saved.
-    val draft = SyncSettings(enabled, url.trim(), database.trim(), username.trim(), password, feeds)
+    val draft = SyncSettings(
+        enabled, url.trim(), database.trim(), username.trim(), password, feeds, readMarks,
+    )
     val dirty = draft != saved
     // "Ready" means every box is filled, so the buttons make sense.
     val filled = draft.url.isNotEmpty() && draft.database.isNotEmpty() &&
@@ -197,6 +203,7 @@ fun SyncScreen(
                                     username = ""
                                     password = ""
                                     feeds = false
+                                    readMarks = false
                                     removals = emptyList()
                                     // Start afresh if sync is ever set up again.
                                     run {
@@ -248,7 +255,7 @@ fun SyncScreen(
             MonoText(
                 "Optional. Copies your saved articles, notes and Read Later links to a " +
                     "CouchDB server that you run, so your devices share them. Which feed " +
-                    "articles you have read is not synced. " +
+                    "articles you have read is shared only if \"read marks\" below is on. " +
                     "Nothing is sent unless sync is on and you tap \"sync now\".",
                 colors.textMuted,
             )
@@ -277,6 +284,23 @@ fun SyncScreen(
                     "on one device appears on the others. Your feed addresses are sent to " +
                     "your server only if this is on. A feed another device removed is only " +
                     "removed here if you say yes.",
+                colors.textDim,
+            )
+
+            // The separate read-marks switch, with what it does in plain words.
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MonoText("read marks:", colors.textPrimary, bold = true)
+                TuiButton(
+                    label = if (readMarks) "on" else "off",
+                    enabled = !busy,
+                    onClick = { readMarks = !readMarks },
+                )
+            }
+            MonoText(
+                "Also shares which articles you have opened, so one you read on another " +
+                    "device shows as read here. The address of each article opened in the " +
+                    "last 90 days is sent to your server only if this is on. Nothing is " +
+                    "deleted from your server, and an article cannot be marked unread again.",
                 colors.textDim,
             )
 
@@ -317,6 +341,7 @@ fun SyncScreen(
                             isError = false
                             val articles = db.syncNow(
                                 saved.enabled,
+                                saved.readMarks,
                                 saved.url,
                                 saved.database,
                                 saved.username,
