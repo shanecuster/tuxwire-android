@@ -1,0 +1,1 @@
+Read Later: share a link from your browser to keep it for later, or save it as an article or add it as a feed. Optional read marks sync keeps opened articles in step across your devices (off by default). Your feeds, saved articles and notes are untouched.
