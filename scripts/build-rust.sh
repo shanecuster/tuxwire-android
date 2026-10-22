@@ -36,6 +36,8 @@
 #                     app/build.gradle.kts). If that version is not installed
 #                     the build stops with a message instead of quietly using
 #                     another one, so builds stay reproducible.
+#   (cargo-ndk is not a setting: the script requires exactly the version in
+#                     CARGO_NDK_VERSION below and stops if yours differs.)
 #   ANDROID_NDK_HOME  Which NDK folder to use. If set, it wins over everything.
 #                     If neither this nor TUXWIRE_NDK_VERSION is set (running
 #                     the script by hand), the newest installed NDK is used.
@@ -65,6 +67,14 @@ export PATH="$HOME/.cargo/bin:$PATH"
 ABIS="${TUXWIRE_ABIS:-arm64-v8a x86_64}"
 MIN_API="${TUXWIRE_MIN_API:-26}"
 
+# The one cargo-ndk version this app is built with. It is a fixed value, not a
+# setting, on purpose: cargo-ndk decides how the compiler is called, so a
+# different version could change the finished library. The check further down
+# stops the build if the installed one differs. F-Droid reads this line too
+# (its recipe installs the same version). Change it here, in the README's
+# "Build tools" table, and in F-Droid's recipe together.
+CARGO_NDK_VERSION="4.1.2"
+
 # --- Small helper: print an error and quit -----------------------------------
 # `>&2` sends the message to the "error" output stream; `exit 1` stops the
 # script with a failure code, which makes Gradle report the build as failed.
@@ -82,7 +92,16 @@ command -v cargo &>/dev/null \
 # --- Step 1: compile for Android ---------------------------------------------
 if [ "${TUXWIRE_SKIP_NDK:-0}" != "1" ]; then
     command -v cargo-ndk &>/dev/null \
-        || fail "cargo-ndk not found. Install it with:  cargo install cargo-ndk"
+        || fail "cargo-ndk not found. Install it with:  cargo install cargo-ndk --version $CARGO_NDK_VERSION --locked"
+
+    # Make sure it is exactly the pinned version. `cargo ndk --version` prints
+    # something like "cargo-ndk 4.1.2"; `grep -oE` keeps only the part that
+    # looks like a version number (digits and dots), and `head -n 1` keeps the
+    # first such match. `|| true` stops `set -e` from quitting on a grep that
+    # finds nothing, so our own message below is shown instead.
+    FOUND_CARGO_NDK="$(cargo ndk --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)"
+    [ "$FOUND_CARGO_NDK" = "$CARGO_NDK_VERSION" ] \
+        || fail "cargo-ndk $CARGO_NDK_VERSION is required but found '${FOUND_CARGO_NDK:-unknown}'. Install the pinned one with:  cargo install cargo-ndk --version $CARGO_NDK_VERSION --locked"
 
     # Locate the Android SDK: environment variable first, then local.properties.
     if [ -z "${ANDROID_HOME:-}" ] && [ -f "$ROOT/local.properties" ]; then
