@@ -103,6 +103,12 @@ android {
     namespace = "com.shanetalkstech.tuxwire"
     // The NDK version AGP expects (see `pinnedNdkVersion` above).
     ndkVersion = pinnedNdkVersion
+    // The Android SDK Build-Tools (aapt2, zipalign, d8 ...) used to package the
+    // app. Without this line AGP picks its own default, which can change when
+    // AGP is upgraded; naming it keeps the tool versions readable from the code
+    // (F-Droid's reproducible-build check relies on that). This is the version
+    // AGP 9.4.1 chose by itself in F-Droid's build log, so nothing changes today.
+    buildToolsVersion = "36.0.0"
     compileSdk {
         version = release(37)
     }

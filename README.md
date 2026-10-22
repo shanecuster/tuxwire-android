@@ -87,6 +87,25 @@ The build is pinned so it comes out the same every time:
 - **Dependencies:** `Cargo.lock` is committed and the build uses `--locked`;
   the shared engine is pinned to one commit in `rust/Cargo.toml`.
 
+### Build tools
+
+Every tool that shapes the finished APK, and where its version is set. Change
+one and the APK may differ, so change the table and the source together.
+
+| Tool | Version | Set in |
+| --- | --- | --- |
+| JDK | 21 (OpenJDK; not enforced, no download plugin) | installed on the machine |
+| Gradle | 9.6.0 (checksum-verified) | `gradle/wrapper/gradle-wrapper.properties` |
+| Android Gradle Plugin | 9.4.1 | `gradle/libs.versions.toml` |
+| Kotlin | 2.2.10 | `gradle/libs.versions.toml` |
+| SDK Build-Tools | 36.0.0 | `buildToolsVersion` in `app/build.gradle.kts` |
+| Android platform | API 37 | `compileSdk` in `app/build.gradle.kts` |
+| NDK | 30.0.16248370 | `pinnedNdkVersion` in `app/build.gradle.kts` |
+| Rust | 1.97.0 | `rust/rust-toolchain.toml` |
+| cargo-ndk | 4.1.2 (checked by the build) | `CARGO_NDK_VERSION` in `scripts/build-rust.sh` |
+| Crates | exact versions | `rust/Cargo.lock` (`--locked`) |
+| Signing (`apksigner`) | Build-Tools 34, not used by the build itself | see Releasing |
+
 Then open this folder in Android Studio (**Open**, not New Project) and press
 Run. Gradle calls `scripts/build-rust.sh`, which builds the Rust library for
 each CPU type and generates the Kotlin bindings. Everyday builds make
