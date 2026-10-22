@@ -1,0 +1,1 @@
+No changes to the app itself. The build is now fully pinned so that independent builders get exactly the same file. Your feeds, saved articles and notes are untouched.
