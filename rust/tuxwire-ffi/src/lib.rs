@@ -1287,6 +1287,74 @@ pub async fn preview_feed(url: String) -> Result<FeedPreview, FfiError> {
     })
 }
 
+/// A quick look at the feed inside a file the person picked, before importing
+/// it. `bytes` is the file's contents and `label` its display name (used only
+/// in error messages).
+///
+/// The `url` in the answer is the key the feed would be stored under
+/// (`import:overtake`), built from the feed's title. A file that is empty, too
+/// big or not RSS/Atom (a saved "Checking your browser" page, for example)
+/// fails with a message naming the file.
+///
+/// Not `async`: parsing bytes already in memory does no waiting.
+#[uniffi::export]
+pub fn preview_feed_file(bytes: Vec<u8>, label: String) -> Result<FeedPreview, FfiError> {
+    // `&bytes` lends the bytes to core without copying them. Core does the
+    // checking, parsing and summarising.
+    let preview = tuxwire_core::feed_import::preview_feed_bytes(&bytes, &label)?;
+
+    // Copy core's summary into the record Kotlin receives. A file has no
+    // address to be "found" at, so it counts as given directly.
+    Ok(FeedPreview {
+        url: preview.key,
+        found_by: FoundBy::Direct,
+        title: preview.title,
+        entry_count: preview.entry_count,
+        latest_titles: preview.latest_titles,
+    })
+}
+
+/// What an import from a file did.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct FileImportReport {
+    /// The key the feed is stored under, such as `import:overtake`.
+    pub key: String,
+    /// How many articles in the file were new to the database.
+    pub added: u32,
+    /// How many articles the file held in all.
+    pub total: u32,
+    /// `true` if this import created the feed, `false` if it only added newer
+    /// articles to a feed that was already there.
+    pub created: bool,
+}
+
+#[uniffi::export]
+impl Database {
+    /// Imports the feed in a picked file as a feed called `name` under `topic`.
+    ///
+    /// A second import with the same name (ignoring case and punctuation)
+    /// updates the same feed and adds only what is new; the feed's stored name
+    /// and topic are kept. A bad file stores nothing. All the work is in core's
+    /// `import_feed_bytes`; this only passes the bytes through under the lock.
+    pub fn import_feed_file(
+        &self,
+        bytes: Vec<u8>,
+        label: String,
+        name: String,
+        topic: String,
+    ) -> Result<FileImportReport, FfiError> {
+        let storage = self.lock()?;
+        let report =
+            tuxwire_core::feed_import::import_feed_bytes(&storage, &bytes, &label, &name, &topic)?;
+        Ok(FileImportReport {
+            key: report.key,
+            added: report.added,
+            total: report.total,
+            created: report.created,
+        })
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -2254,6 +2322,98 @@ mod tests {
             .to_string();
         assert!(!err.contains("secret-pass"), "password leaked: {err}");
         assert!(!err.contains("couch.invalid"), "address leaked: {err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // -- importing a feed from a picked file ---------------------------------
+
+    /// The bytes of a small feed, standing in for a file the picker returned.
+    const PICKED_FEED: &str = r#"<?xml version="1.0"?><rss version="2.0"><channel><title>Overtake</title>
+        <item><title>One</title><link>https://example.com/one</link></item>
+        <item><title>Two</title><link>https://example.com/two</link></item>
+        </channel></rss>"#;
+
+    /// The preview names the feed and the key it would be stored under, and a
+    /// file that is not a feed is an error that names the file.
+    #[test]
+    fn a_picked_file_can_be_previewed() {
+        let preview =
+            preview_feed_file(PICKED_FEED.as_bytes().to_vec(), "index.rss".to_string()).unwrap();
+        assert_eq!(preview.title, "Overtake");
+        assert_eq!(preview.url, "import:overtake");
+        assert_eq!(preview.entry_count, 2);
+        assert_eq!(preview.latest_titles, vec!["One", "Two"]);
+
+        let err = preview_feed_file(b"<html></html>".to_vec(), "page.html".to_string())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("page.html"), "{err}");
+    }
+
+    /// Importing adds the feed with its articles; a second import of the same
+    /// file adds nothing and makes no duplicate feed; a bad file changes
+    /// nothing.
+    #[test]
+    fn importing_a_file_adds_the_feed_once() {
+        let (db, dir) = temp_database();
+        let bytes = PICKED_FEED.as_bytes().to_vec();
+
+        let first = db
+            .import_feed_file(
+                bytes.clone(),
+                "index.rss".into(),
+                "Overtake".into(),
+                "sim-racing".into(),
+            )
+            .unwrap();
+        assert!(first.created);
+        assert_eq!((first.added, first.total), (2, 2));
+        assert_eq!(first.key, "import:overtake");
+
+        let feeds = db.list_all_feeds().unwrap();
+        assert_eq!(feeds.len(), 1);
+        assert_eq!(feeds[0].url, "import:overtake");
+        assert_eq!(feeds[0].unread, 2);
+        assert_eq!(db.list_articles("import:overtake".into()).unwrap().len(), 2);
+
+        let again = db
+            .import_feed_file(
+                bytes,
+                "index.rss".into(),
+                "Overtake".into(),
+                "sim-racing".into(),
+            )
+            .unwrap();
+        assert!(!again.created);
+        assert_eq!(again.added, 0);
+        assert_eq!(db.list_all_feeds().unwrap().len(), 1);
+
+        let bad = db.import_feed_file(
+            b"nope".to_vec(),
+            "bad.txt".into(),
+            "Other".into(),
+            "misc".into(),
+        );
+        assert!(bad.is_err());
+        assert_eq!(db.list_all_feeds().unwrap().len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A refresh leaves an imported feed alone: nothing to download, so no
+    /// failure is counted for it.
+    #[tokio::test]
+    async fn refresh_ignores_an_imported_feed() {
+        let (db, dir) = temp_database();
+        db.import_feed_file(
+            PICKED_FEED.as_bytes().to_vec(),
+            "index.rss".into(),
+            "Overtake".into(),
+            "sim-racing".into(),
+        )
+        .unwrap();
+        let summary = db.refresh_all().await.unwrap();
+        assert_eq!(summary.failed, 0);
+        assert_eq!(summary.new_articles, 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

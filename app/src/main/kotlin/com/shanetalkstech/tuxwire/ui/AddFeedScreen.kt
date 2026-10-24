@@ -1,5 +1,10 @@
 package com.shanetalkstech.tuxwire.ui
 
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,14 +22,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import uniffi.tuxwire_ffi.Database
 import uniffi.tuxwire_ffi.FoundBy
 import uniffi.tuxwire_ffi.TopicInfo
 import uniffi.tuxwire_ffi.previewFeed
+import uniffi.tuxwire_ffi.previewFeedFile
 
 /**
  * The add-feed form: type a feed address, or just a blog's address, tap "check"
@@ -66,6 +74,13 @@ fun AddFeedScreen(
     // while the form is still open (for example after a failed first download).
     var saved by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    // A feed file the person picked, kept in memory only (a whole file is too big
+    // to save across rotation; after a rotation the person simply picks again).
+    // `null` means no file is picked and the form works on the address as before.
+    var pickedBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var pickedLabel by remember { mutableStateOf("") }
 
     // The topics that already exist, offered below the topic box so a tap
     // reuses one instead of typing it again (and mistyping it).
@@ -115,6 +130,44 @@ fun AddFeedScreen(
         }
     }
 
+    // The file picker for "import from file", for sites that block programs but
+    // show the feed in a browser: save the feed from the browser, then pick it
+    // here. `OpenDocument` shows the system chooser and needs no storage
+    // permission; it gives back the file's address, or null if the person backed
+    // out. `*/*` allows any type because phones label feed files inconsistently.
+    val pickLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            busy = true
+            status = "reading the file..."
+            scope.launch {
+                try {
+                    // Read the bytes and let Rust check them: a saved
+                    // "Checking your browser" page fails here with a message
+                    // naming the file, and nothing is stored.
+                    val label = onIo { displayNameOf(context, uri) }
+                    val bytes = onIo { readFeedFileBytes(context, uri) }
+                    val preview = onIo { previewFeedFile(bytes, label) }
+                    pickedBytes = bytes
+                    pickedLabel = label
+                    // The box shows the key the feed will be stored under.
+                    url = preview.url
+                    if (name.isBlank()) name = preview.title
+                    status = "found in $label: ${preview.title} (${preview.entryCount} articles)\n" +
+                        "imported once; to update it later, import a newer copy"
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    pickedBytes = null
+                    status = "error: ${t.explain()}"
+                } finally {
+                    busy = false
+                }
+            }
+        }
+    }
+
     // Opened from the Share menu with an address: check it straight away, so the
     // person only has to pick a topic and save. `status.isEmpty()` keeps this
     // from running again after the phone is rotated (the status is saved).
@@ -135,6 +188,36 @@ fun AddFeedScreen(
                     onClick = {
                         busy = true
                         scope.launch {
+                            // A picked file is imported from its bytes: no
+                            // download, so none of the steps below apply.
+                            val picked = pickedBytes
+                            if (picked != null) {
+                                try {
+                                    val report = onIo {
+                                        db.importFeedFile(picked, pickedLabel, name, topic)
+                                    }
+                                    saved = true
+                                    status = "imported: ${report.added} new of ${report.total} articles"
+                                    busy = false
+                                    onDone()
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (t: Throwable) {
+                                    status = "error: ${t.explain()}"
+                                    busy = false
+                                }
+                                return@launch
+                            }
+
+                            // The box holds an `import:` key but the file is gone
+                            // (the phone was rotated, which clears it): saving
+                            // would try to download a made-up address.
+                            if (url.trim().startsWith("import:")) {
+                                status = "error: pick the file again"
+                                busy = false
+                                return@launch
+                            }
+
                             // The address exactly as it will be stored. The same
                             // text is used to save the feed and then to fetch it.
                             val address = normalisedFeedUrl(url)
@@ -202,7 +285,12 @@ fun AddFeedScreen(
                 TuiField(
                     label = "feed or page address",
                     value = url,
-                    onValueChange = { url = it },
+                    // Typing here means the person wants an address, not the
+                    // picked file, so the pick is forgotten.
+                    onValueChange = {
+                        url = it
+                        pickedBytes = null
+                    },
                     keyboardType = KeyboardType.Uri,
                 )
                 TuiButton(
@@ -220,6 +308,20 @@ fun AddFeedScreen(
                         },
                     )
                 }
+            }
+
+            TuiPanel(title = "or a saved feed file") {
+                MonoText(
+                    "Some sites refuse apps but show their feed in a browser. " +
+                        "Open the feed in your browser, save it, then choose the file " +
+                        "here. This imports it once; import a newer copy to update.",
+                    colors.textMuted,
+                )
+                TuiButton(
+                    label = "choose a file",
+                    enabled = !busy && !saved,
+                    onClick = { pickLauncher.launch(arrayOf("*/*")) },
+                )
             }
 
             TuiPanel(title = "details") {
@@ -243,4 +345,50 @@ fun AddFeedScreen(
             }
         }
     }
+}
+
+/** The biggest feed file we will read into memory: 20 MiB, the same limit as a download. */
+private const val MAX_FEED_FILE_BYTES = 20 * 1024 * 1024
+
+/**
+ * Reads the bytes of the file at [uri], refusing anything bigger than
+ * [MAX_FEED_FILE_BYTES] without loading it all first.
+ *
+ * Bytes, not text: Rust reads the feed's own encoding line, so accented
+ * letters in an ISO-8859-1 feed survive. Runs on a background thread (the
+ * caller wraps it in `onIo`).
+ */
+private fun readFeedFileBytes(context: Context, uri: Uri): ByteArray {
+    val input = context.contentResolver.openInputStream(uri)
+        ?: throw IllegalStateException("could not open that file")
+    // `use` closes the stream when the block ends, even if it throws.
+    return input.use { stream ->
+        val out = ByteArrayOutputStream()
+        val buffer = ByteArray(8192)
+        while (true) {
+            val count = stream.read(buffer)
+            if (count < 0) break
+            out.write(buffer, 0, count)
+            // Stop as soon as the limit is passed, so a huge file is never
+            // read into memory in full.
+            if (out.size() > MAX_FEED_FILE_BYTES) {
+                throw IllegalStateException("this file is too big to be a feed (the limit is 20 MB)")
+            }
+        }
+        out.toByteArray()
+    }
+}
+
+/**
+ * The file's name as the person knows it ("index.rss"), used in messages. The
+ * file picker's address is not readable, so the name is asked of the system;
+ * if it will not say, a plain fallback is used.
+ */
+private fun displayNameOf(context: Context, uri: Uri): String {
+    // `query` returns a small table with one row for this file; `use` closes it.
+    val name = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (column >= 0 && cursor.moveToFirst()) cursor.getString(column) else null
+    }
+    return name ?: "that file"
 }

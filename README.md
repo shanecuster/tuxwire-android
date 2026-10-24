@@ -21,6 +21,12 @@ list (the saved list also keeps its search and switch); the logo / home button
 starts again at the top.
 Saving a new feed downloads its articles straight away, so it never looks empty.
 Importing an OPML file does the same once, for all the feeds it added.
+Some sites (OverTake.gg, for one) refuse apps but show their feed in a browser:
+save the feed from the browser, then on the add-feed form choose **choose a
+file**. The feed is imported once, under a made-up address such as
+`import:overtake`, and a refresh leaves it alone; to update it, import a newer
+copy of the file (it only adds what is new). Imported feeds are not synced or
+exported to OPML.
 Every article has a **save** button, and its page lets you add, edit or delete a
 note. A saved article's button becomes **un-save**, which always asks first;
 a note and a save go together, so un-saving an article with a note also deletes
