@@ -31,12 +31,14 @@ resolver = "3"
 # master can never silently break this app. To move to a newer core, change
 # this hash on purpose, then rebuild and test.
 #
-# This commit is the tip of tuxwire's `feature/read-marks` branch: core gains
-# the optional read-marks sync (which articles were opened, behind its own
-# switch, off by default) on top of Read Later, the optional feed-list sync and
-# the CouchDB sync of saved articles and notes. It exists on GitHub once that
-# branch has been merged and pushed.
-tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "c75ebd94154bfb7acca19b538a2b8099d04478bb" }
+# This commit is the tip of tuxwire's `feature/file-import-bytes` branch (on top
+# of `feature/file-source`): core gains "import a feed from the bytes of a file"
+# (what the Import from file button uses), plus `type = "file"` sources for the
+# terminal app, on top of the read-marks sync, Read Later, feed-list sync and
+# CouchDB sync of saved articles and notes. It exists on GitHub once those
+# branches have been merged and pushed; merge them with an ordinary merge
+# commit (not a squash or rebase) so this hash stays reachable.
+tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "c340227eca87130fcc74c647fafe4a0fc1f9ff93" }
 
 # `anyhow` is the catch-all error type tuxwire-core returns from its functions.
 # This crate needs to name that type to convert it into the error Kotlin sees.
