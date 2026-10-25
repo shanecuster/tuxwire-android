@@ -2,12 +2,16 @@ package com.shanetalkstech.tuxwire.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -167,6 +171,10 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
     // The phone's back button/gesture goes back one screen, but only while
     // there is a screen to go back to (otherwise it leaves the app as usual).
     BackHandler(enabled = stack.size > 1, onBack = pop)
+    // On the Stats tab "back" returns to the feed list first, then leaves the app.
+    BackHandler(enabled = stack.size == 1 && stack.last() == Screen.Stats) {
+        stack = listOf(Screen.Home)
+    }
 
     // Provide the theme colours to everything below.
     CompositionLocalProvider(LocalTuxwireColors provides colors) {
@@ -194,167 +202,188 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                     colors.accentBreaking,
                 )
                 // Normal case: show the current screen.
-                db != null -> AnimatedContent(
-                    targetState = stack.last(),
-                    modifier = Modifier.fillMaxSize(),
-                    label = "screen",
-                    // Going deeper slides the new screen in from the right while the
-                    // old one leaves to the left; going back does the reverse.
-                    transitionSpec = {
-                        if (targetState.depth > initialState.depth) {
-                            slideInHorizontally { width -> width } togetherWith
-                                slideOutHorizontally { width -> -width }
-                        } else {
-                            slideInHorizontally { width -> -width } togetherWith
-                                slideOutHorizontally { width -> width }
-                        }
-                    },
-                ) { screen ->
-                    // `when` over a sealed class must cover every screen.
-                    when (screen) {
-                        // Home: every feed. A feed opens its articles; a topic
-                        // label opens that topic's feeds.
-                        Screen.Home -> FeedsScreen(
-                            db = db,
-                            topic = null,
-                            themeName = themeName ?: "",
-                            onCycleTheme = cycleTheme,
-                            bannerColor = logoColor,
-                            scrollMemory = scrollMemory,
-                            scrollKey = screen.encode(),
-                            onHome = goHome,
-                            onBack = pop,
-                            freshFeeds = freshFeeds,
-                            onOpenFeed = {
-                                freshFeeds.clear(it.url)
-                                push(Screen.Articles(it.topic, it.name, it.url))
-                            },
-                            onOpenTopic = { push(Screen.Feeds(it)) },
-                            onOpenOpml = { push(Screen.Opml) },
-                            onOpenSaved = { push(Screen.Saved) },
-                            onOpenReadLater = { push(Screen.ReadLater) },
-                            onOpenSync = { push(Screen.Sync) },
-                            onAddFeed = { push(Screen.AddFeed("")) },
-                        )
+                db != null -> Column(modifier = Modifier.fillMaxSize()) {
+                    AnimatedContent(
+                        targetState = stack.last(),
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        label = "screen",
+                        // Going deeper slides the new screen in from the right while the
+                        // old one leaves to the left; going back does the reverse.
+                        transitionSpec = {
+                            if (targetState.depth == initialState.depth) {
+                                // Same depth (switching tabs): a quick cross-fade.
+                                fadeIn() togetherWith fadeOut()
+                            } else if (targetState.depth > initialState.depth) {
+                                slideInHorizontally { width -> width } togetherWith
+                                    slideOutHorizontally { width -> -width }
+                            } else {
+                                slideInHorizontally { width -> -width } togetherWith
+                                    slideOutHorizontally { width -> width }
+                            }
+                        },
+                    ) { screen ->
+                        // `when` over a sealed class must cover every screen.
+                        when (screen) {
+                            // Home: every feed. A feed opens its articles; a topic
+                            // label opens that topic's feeds.
+                            Screen.Home -> FeedsScreen(
+                                db = db,
+                                topic = null,
+                                themeName = themeName ?: "",
+                                onCycleTheme = cycleTheme,
+                                bannerColor = logoColor,
+                                scrollMemory = scrollMemory,
+                                scrollKey = screen.encode(),
+                                onHome = goHome,
+                                onBack = pop,
+                                freshFeeds = freshFeeds,
+                                onOpenFeed = {
+                                    freshFeeds.clear(it.url)
+                                    push(Screen.Articles(it.topic, it.name, it.url))
+                                },
+                                onOpenTopic = { push(Screen.Feeds(it)) },
+                                onOpenOpml = { push(Screen.Opml) },
+                                onOpenSaved = { push(Screen.Saved) },
+                                onOpenReadLater = { push(Screen.ReadLater) },
+                                onOpenSync = { push(Screen.Sync) },
+                                onAddFeed = { push(Screen.AddFeed("")) },
+                            )
+                            // The Stats tab.
+                        Screen.Stats -> StatsScreen(db = db)
                         // Import and export of feed lists.
-                        Screen.Opml -> OpmlScreen(
-                            db = db,
-                            onHome = goHome,
-                            onBack = pop,
-                        )
-                        // Optional CouchDB sync settings (off by default).
-                        Screen.Sync -> SyncScreen(
-                            db = db,
-                            onHome = goHome,
-                            onBack = pop,
-                        )
-                        // Saved articles and notes. Opening one shows its article
-                        // page (note, edit, delete); "saved" stands in for the
-                        // topic and the article's source for the feed name in the
-                        // breadcrumb, and there is no feed address.
-                        Screen.Saved -> SavedScreen(
-                            db = db,
-                            scrollMemory = scrollMemory,
-                            scrollKey = screen.encode(),
-                            onHome = goHome,
-                            onBack = pop,
-                            onOpenArticle = { push(Screen.Article("saved", it.source, "", it.id)) },
-                        )
-                        // The Read Later list, with the paste box. Pasting a link
-                        // opens the question about it.
-                        Screen.ReadLater -> ReadLaterScreen(
-                            db = db,
-                            scrollMemory = scrollMemory,
-                            scrollKey = screen.encode(),
-                            onHome = goHome,
-                            onBack = pop,
-                            onOpenLink = { push(Screen.Link(address = it)) },
-                        )
-                        // The question about one link, pasted or shared.
-                        is Screen.Link -> LinkScreen(
-                            db = db,
-                            address = screen.address,
-                            titleHint = screen.titleHint,
-                            fromShare = screen.fromShare,
-                            onHome = goHome,
-                            onBack = pop,
-                            // Replace this screen with the add-feed form, so
-                            // "back" from there does not return to the question.
-                            onAddAsFeed = {
-                                stack = stack.dropLast(1) + Screen.AddFeed("", screen.address)
+                            Screen.Opml -> OpmlScreen(
+                                db = db,
+                                onHome = goHome,
+                                onBack = pop,
+                            )
+                            // Optional CouchDB sync settings (off by default).
+                            Screen.Sync -> SyncScreen(
+                                db = db,
+                                onHome = goHome,
+                                onBack = pop,
+                            )
+                            // Saved articles and notes. Opening one shows its article
+                            // page (note, edit, delete); "saved" stands in for the
+                            // topic and the article's source for the feed name in the
+                            // breadcrumb, and there is no feed address.
+                            Screen.Saved -> SavedScreen(
+                                db = db,
+                                scrollMemory = scrollMemory,
+                                scrollKey = screen.encode(),
+                                onHome = goHome,
+                                onBack = pop,
+                                onOpenArticle = { push(Screen.Article("saved", it.source, "", it.id)) },
+                            )
+                            // The Read Later list, with the paste box. Pasting a link
+                            // opens the question about it.
+                            Screen.ReadLater -> ReadLaterScreen(
+                                db = db,
+                                scrollMemory = scrollMemory,
+                                scrollKey = screen.encode(),
+                                onHome = goHome,
+                                onBack = pop,
+                                onOpenLink = { push(Screen.Link(address = it)) },
+                            )
+                            // The question about one link, pasted or shared.
+                            is Screen.Link -> LinkScreen(
+                                db = db,
+                                address = screen.address,
+                                titleHint = screen.titleHint,
+                                fromShare = screen.fromShare,
+                                onHome = goHome,
+                                onBack = pop,
+                                // Replace this screen with the add-feed form, so
+                                // "back" from there does not return to the question.
+                                onAddAsFeed = {
+                                    stack = stack.dropLast(1) + Screen.AddFeed("", screen.address)
+                                },
+                                // Show the list with the new link on it: if the
+                                // question was opened from the list, just go back
+                                // to it (it reloads); if it was shared from another
+                                // app, put the list in this screen's place.
+                                onAddedToList = {
+                                    if (stack.getOrNull(stack.size - 2) == Screen.ReadLater) {
+                                        pop()
+                                    } else {
+                                        stack = stack.dropLast(1) + Screen.ReadLater
+                                    }
+                                },
+                                // Show the Saved list, in this screen's place.
+                                onSaved = { stack = stack.dropLast(1) + Screen.Saved },
+                            )
+                            // One topic's feeds.
+                            is Screen.Feeds -> FeedsScreen(
+                                db = db,
+                                topic = screen.topic,
+                                themeName = "",
+                                onCycleTheme = {},
+                                bannerColor = logoColor,
+                                scrollMemory = scrollMemory,
+                                scrollKey = screen.encode(),
+                                onHome = goHome,
+                                onBack = pop,
+                                freshFeeds = freshFeeds,
+                                onOpenFeed = {
+                                    freshFeeds.clear(it.url)
+                                    push(Screen.Articles(screen.topic, it.name, it.url))
+                                },
+                                onOpenTopic = {},
+                                onOpenOpml = {},
+                                onOpenSaved = {},
+                                onOpenReadLater = {},
+                                onOpenSync = {},
+                                onAddFeed = { push(Screen.AddFeed(screen.topic)) },
+                            )
+                            is Screen.Articles -> ArticlesScreen(
+                                db = db,
+                                topic = screen.topic,
+                                feedName = screen.feedName,
+                                feedUrl = screen.feedUrl,
+                                scrollMemory = scrollMemory,
+                                scrollKey = screen.encode(),
+                                onHome = goHome,
+                                onBack = pop,
+                                onOpenArticle = {
+                                    push(
+                                        Screen.Article(
+                                            screen.topic,
+                                            screen.feedName,
+                                            screen.feedUrl,
+                                            it,
+                                        ),
+                                    )
+                                },
+                            )
+                            is Screen.Article -> ArticleScreen(
+                                db = db,
+                                articleId = screen.articleId,
+                                topic = screen.topic,
+                                feedName = screen.feedName,
+                                onHome = goHome,
+                                onBack = pop,
+                            )
+                            is Screen.AddFeed -> AddFeedScreen(
+                                db = db,
+                                startTopic = screen.topic,
+                                startAddress = screen.address,
+                                onHome = goHome,
+                                onBack = pop,
+                                onDone = pop,
+                            )
+                        }
+                    }
+                    // The tab bar shows only on the two top-level screens (the
+                    // feed list and Stats); deeper screens have their own bars.
+                    // `stack.size == 1` means nothing is open on top of a tab.
+                    if (stack.size == 1 && (stack.last() == Screen.Home || stack.last() == Screen.Stats)) {
+                        TabBar(
+                            selected = if (stack.last() == Screen.Stats) Tab.STATS else Tab.FEEDS,
+                            onSelect = { tab ->
+                                // Switching tabs starts that tab afresh, as if
+                                // "home" had been pressed.
+                                scrollMemory.clear()
+                                stack = listOf(if (tab == Tab.STATS) Screen.Stats else Screen.Home)
                             },
-                            // Show the list with the new link on it: if the
-                            // question was opened from the list, just go back
-                            // to it (it reloads); if it was shared from another
-                            // app, put the list in this screen's place.
-                            onAddedToList = {
-                                if (stack.getOrNull(stack.size - 2) == Screen.ReadLater) {
-                                    pop()
-                                } else {
-                                    stack = stack.dropLast(1) + Screen.ReadLater
-                                }
-                            },
-                            // Show the Saved list, in this screen's place.
-                            onSaved = { stack = stack.dropLast(1) + Screen.Saved },
-                        )
-                        // One topic's feeds.
-                        is Screen.Feeds -> FeedsScreen(
-                            db = db,
-                            topic = screen.topic,
-                            themeName = "",
-                            onCycleTheme = {},
-                            bannerColor = logoColor,
-                            scrollMemory = scrollMemory,
-                            scrollKey = screen.encode(),
-                            onHome = goHome,
-                            onBack = pop,
-                            freshFeeds = freshFeeds,
-                            onOpenFeed = {
-                                freshFeeds.clear(it.url)
-                                push(Screen.Articles(screen.topic, it.name, it.url))
-                            },
-                            onOpenTopic = {},
-                            onOpenOpml = {},
-                            onOpenSaved = {},
-                            onOpenReadLater = {},
-                            onOpenSync = {},
-                            onAddFeed = { push(Screen.AddFeed(screen.topic)) },
-                        )
-                        is Screen.Articles -> ArticlesScreen(
-                            db = db,
-                            topic = screen.topic,
-                            feedName = screen.feedName,
-                            feedUrl = screen.feedUrl,
-                            scrollMemory = scrollMemory,
-                            scrollKey = screen.encode(),
-                            onHome = goHome,
-                            onBack = pop,
-                            onOpenArticle = {
-                                push(
-                                    Screen.Article(
-                                        screen.topic,
-                                        screen.feedName,
-                                        screen.feedUrl,
-                                        it,
-                                    ),
-                                )
-                            },
-                        )
-                        is Screen.Article -> ArticleScreen(
-                            db = db,
-                            articleId = screen.articleId,
-                            topic = screen.topic,
-                            feedName = screen.feedName,
-                            onHome = goHome,
-                            onBack = pop,
-                        )
-                        is Screen.AddFeed -> AddFeedScreen(
-                            db = db,
-                            startTopic = screen.topic,
-                            startAddress = screen.address,
-                            onHome = goHome,
-                            onBack = pop,
-                            onDone = pop,
                         )
                     }
                 }

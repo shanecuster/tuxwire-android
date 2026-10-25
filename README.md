@@ -23,6 +23,13 @@ After **refresh all**, every feed that got new articles shows a `*` after its na
 so with a long list you can see where the new articles are. Opening a feed clears
 its `*` (whether or not you read anything). The marks are kept in memory only, so
 leaving the app starts clean.
+A tab bar at the bottom of the feed list switches between **Feeds** and **Stats**.
+Stats shows what you have read (total, this week, this month), unread, feeds, notes,
+saved, your reading streak, a chart of reads per week, and the topics and sources you
+read most. The numbers are worked out by the shared core, so they match the terminal
+app's Stats screen (`g`). The chart and streak start from the day read times began
+being recorded; reads made on another device count in the totals and the chart, but
+not in the top lists.
 Saving a new feed downloads its articles straight away, so it never looks empty.
 Importing an OPML file does the same once, for all the feeds it added.
 Some sites (OverTake.gg, for one) refuse apps but show their feed in a browser:

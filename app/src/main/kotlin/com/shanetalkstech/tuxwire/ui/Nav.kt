@@ -9,6 +9,9 @@ import androidx.compose.runtime.saveable.Saver
  * so a `when` over a [Screen] must handle each one (adding a screen later
  * without handling it is a compile error, not a runtime surprise).
  *
+ * [Home] and [Stats] are the two tabs of the bottom tab bar; switching tabs
+ * replaces the whole back stack with the chosen one.
+ *
  * The drill-down is Home (every feed), then optionally Feeds (one topic's
  * feeds, reached by tapping a topic label), then Articles (one feed's
  * articles), then Article (one article's summary). [AddFeed] opens on top of
@@ -26,6 +29,9 @@ sealed class Screen(val depth: Int) {
 
     /** The first screen: every feed, alphabetically. */
     data object Home : Screen(0)
+
+    /** The Stats tab, a top-level sibling of [Home] (switched with the tab bar). */
+    data object Stats : Screen(0)
 
     /** Import and export of OPML feed lists. */
     data object Opml : Screen(1)
@@ -78,6 +84,7 @@ sealed class Screen(val depth: Int) {
      */
     fun encode(): String = when (this) {
         Home -> "T"
+        Stats -> "G"
         Opml -> "O"
         Saved -> "S"
         Sync -> "Y"
@@ -106,6 +113,7 @@ sealed class Screen(val depth: Int) {
             // `split` cuts the text at each separator into a list of fields.
             val parts = text.split(SEPARATOR)
             return when (parts[0]) {
+                "G" -> Stats
                 "O" -> Opml
                 "S" -> Saved
                 "Y" -> Sync
