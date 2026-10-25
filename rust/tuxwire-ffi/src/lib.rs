@@ -458,6 +458,9 @@ pub struct RefreshSummary {
     pub offline: bool,
     /// One line per failed feed ("Name: why"), for showing or logging.
     pub messages: Vec<String>,
+    /// The addresses of the feeds that got at least one new article, each once,
+    /// so the feed list can mark them. Empty when nothing was new.
+    pub feeds_with_new: Vec<String>,
 }
 
 /// Turns core's fetch tally into the record the app shows.
@@ -471,6 +474,9 @@ impl From<&FetchReport> for RefreshSummary {
             new_articles: report.new_article_ids.len() as u32,
             offline: report.is_offline(),
             messages: report.failure_messages.clone(),
+            // The tally has no database to ask which feeds the new articles
+            // belong to; `Database::refresh` fills this in afterwards.
+            feeds_with_new: Vec::new(),
         }
     }
 }
@@ -541,13 +547,27 @@ impl Database {
         // Step 3: lock once, store every outcome, and tally the results. The
         // inner block makes the guard drop as soon as storing is done.
         let mut report = FetchReport::default();
+        let origins;
         {
             let storage = self.lock()?;
             for outcome in outcomes {
                 report.record_outcome(&storage, outcome)?;
             }
+            // Still under the lock: look up which feeds the new articles came
+            // from, so the app can mark them.
+            origins = storage.article_origins(&report.new_article_ids)?;
         }
-        Ok(RefreshSummary::from(&report))
+
+        // Turn the origins into a sorted list of feed addresses, each once. A
+        // `BTreeSet` drops duplicates and keeps the order stable; an article
+        // stored before addresses were recorded has none and is skipped.
+        let addresses: std::collections::BTreeSet<String> = origins
+            .into_iter()
+            .filter_map(|origin| origin.feed_url)
+            .collect();
+        let mut summary = RefreshSummary::from(&report);
+        summary.feeds_with_new = addresses.into_iter().collect();
+        Ok(summary)
     }
 }
 
@@ -2414,6 +2434,25 @@ mod tests {
         let summary = db.refresh_all().await.unwrap();
         assert_eq!(summary.failed, 0);
         assert_eq!(summary.new_articles, 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A refresh names the feed that got new articles, once, and a second
+    /// refresh with nothing new names none.
+    #[tokio::test]
+    async fn refresh_names_the_feeds_with_new_articles() {
+        let (db, dir) = temp_database();
+        let address = serve_sample_feed();
+        db.add_feed("Sample".into(), address.clone(), "news".into())
+            .unwrap();
+
+        let first = db.refresh_all().await.unwrap();
+        assert_eq!(first.new_articles, 2);
+        assert_eq!(first.feeds_with_new, vec![address]);
+
+        let second = db.refresh_all().await.unwrap();
+        assert_eq!(second.new_articles, 0);
+        assert!(second.feeds_with_new.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
