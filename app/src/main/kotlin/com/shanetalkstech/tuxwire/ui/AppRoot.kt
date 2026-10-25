@@ -117,6 +117,12 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
     // while the list screens do (each is removed when a deeper one opens).
     val scrollMemory = rememberSaveable(saver = ScrollMemory.Saver) { ScrollMemory() }
 
+    // The feeds that got new articles in a refresh and have not been opened yet,
+    // marked with a `*` in the feed list. It lives here, for the same reason as
+    // `scrollMemory`: the feed list screen is removed when a feed opens, but the
+    // marks must outlast it. Opening a feed clears its mark (see `onOpenFeed`).
+    val freshFeeds = rememberSaveable(saver = FreshFeeds.Saver) { FreshFeeds() }
+
     // Throws away the whole back stack and shows the home screen.
     val goHome: () -> Unit = {
         if (stack.size > 1) {
@@ -218,7 +224,11 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                             scrollKey = screen.encode(),
                             onHome = goHome,
                             onBack = pop,
-                            onOpenFeed = { push(Screen.Articles(it.topic, it.name, it.url)) },
+                            freshFeeds = freshFeeds,
+                            onOpenFeed = {
+                                freshFeeds.clear(it.url)
+                                push(Screen.Articles(it.topic, it.name, it.url))
+                            },
                             onOpenTopic = { push(Screen.Feeds(it)) },
                             onOpenOpml = { push(Screen.Opml) },
                             onOpenSaved = { push(Screen.Saved) },
@@ -298,7 +308,11 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                             scrollKey = screen.encode(),
                             onHome = goHome,
                             onBack = pop,
-                            onOpenFeed = { push(Screen.Articles(screen.topic, it.name, it.url)) },
+                            freshFeeds = freshFeeds,
+                            onOpenFeed = {
+                                freshFeeds.clear(it.url)
+                                push(Screen.Articles(screen.topic, it.name, it.url))
+                            },
                             onOpenTopic = {},
                             onOpenOpml = {},
                             onOpenSaved = {},

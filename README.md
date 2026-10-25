@@ -19,6 +19,10 @@ sharing a page from the browser asks what to do with the link: **read later**,
 Going back keeps your place in the feed lists, the article list and the saved
 list (the saved list also keeps its search and switch); the logo / home button
 starts again at the top.
+After **refresh all**, every feed that got new articles shows a `*` after its name,
+so with a long list you can see where the new articles are. Opening a feed clears
+its `*` (whether or not you read anything). The marks are kept in memory only, so
+leaving the app starts clean.
 Saving a new feed downloads its articles straight away, so it never looks empty.
 Importing an OPML file does the same once, for all the feeds it added.
 Some sites (OverTake.gg, for one) refuse apps but show their feed in a browser:
