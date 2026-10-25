@@ -31,12 +31,12 @@ resolver = "3"
 # master can never silently break this app. To move to a newer core, change
 # this hash on purpose, then rebuild and test.
 #
-# This commit is on tuxwire's `feature/new-feed-marker` branch, on top of the
-# merged file-import work: core gains `Storage::article_origins` (which feeds
-# some new article IDs came from, for the new-feed marker). It exists on GitHub
-# once that branch has been merged and pushed; merge with an ordinary merge
-# commit (not a squash or rebase) so this hash stays reachable.
-tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "9dce8e9f421e5f0e82c1dffa1a6732587bcabfab" }
+# This commit is on tuxwire's `feature/stats` branch, on top of the new-feed
+# marker work: core gains the `stats` module (`compute_stats_at`, one plain
+# struct of numbers for the Stats tab). It exists on GitHub once that branch
+# has been merged and pushed; merge with an ordinary merge commit (not a squash
+# or rebase) so this hash stays reachable.
+tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "4ac4271e344a9aeff940831dc132b8c79506f1b0" }
 
 # `anyhow` is the catch-all error type tuxwire-core returns from its functions.
 # This crate needs to name that type to convert it into the error Kotlin sees.
