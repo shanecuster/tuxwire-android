@@ -51,6 +51,8 @@ import uniffi.tuxwire_ffi.FeedInfo
  * @param scrollKey which entry of [scrollMemory] belongs to this list.
  * @param onHome jumps back to the home screen (topic page only).
  * @param onBack goes back one screen (topic page only).
+ * @param freshFeeds the feeds that got new articles in a refresh and have not
+ *   been opened yet; each is drawn with a `*`. A refresh here adds to it.
  * @param onOpenFeed called with the tapped feed.
  * @param onOpenTopic called with a topic's name when a topic label is tapped.
  * @param onOpenOpml opens the import / export screen (home only).
@@ -70,6 +72,7 @@ fun FeedsScreen(
     scrollKey: String,
     onHome: () -> Unit,
     onBack: () -> Unit,
+    freshFeeds: FreshFeeds,
     onOpenFeed: (FeedInfo) -> Unit,
     onOpenTopic: (String) -> Unit,
     onOpenOpml: () -> Unit,
@@ -245,7 +248,11 @@ fun FeedsScreen(
                                         // `refreshAll` is a Kotlin `suspend fun`, generated
                                         // from an async Rust function. It waits for the
                                         // network without freezing the screen.
-                                        message = db.refreshAll().describe()
+                                        val summary = db.refreshAll()
+                                        message = summary.describe()
+                                        // Mark the feeds that got something new, so
+                                        // they stand out in the list below.
+                                        freshFeeds.add(summary.feedsWithNew)
                                         version++
                                     } catch (e: CancellationException) {
                                         // Never swallow cancellation; it must propagate
@@ -295,8 +302,14 @@ fun FeedsScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 TuiRow(onClick = { onOpenFeed(feed) }) {
+                                    // A ` *` after the name while this feed has new
+                                    // articles that have not been opened yet. Reading
+                                    // `freshFeeds.has` here is what makes the list
+                                    // redraw when the set changes. (The row is a
+                                    // column, so the marker sits in the name's own
+                                    // text to stay on the same line.)
                                     MonoText(
-                                        text = feed.name,
+                                        text = if (freshFeeds.has(feed.url)) "${feed.name} *" else feed.name,
                                         color = if (feed.unread > 0u) colors.accentUnread else colors.accentRead,
                                         bold = true,
                                     )

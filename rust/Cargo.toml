@@ -31,14 +31,12 @@ resolver = "3"
 # master can never silently break this app. To move to a newer core, change
 # this hash on purpose, then rebuild and test.
 #
-# This commit is the tip of tuxwire's `feature/file-import-bytes` branch (on top
-# of `feature/file-source`): core gains "import a feed from the bytes of a file"
-# (what the Import from file button uses), plus `type = "file"` sources for the
-# terminal app, on top of the read-marks sync, Read Later, feed-list sync and
-# CouchDB sync of saved articles and notes. It exists on GitHub once those
-# branches have been merged and pushed; merge them with an ordinary merge
-# commit (not a squash or rebase) so this hash stays reachable.
-tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "c340227eca87130fcc74c647fafe4a0fc1f9ff93" }
+# This commit is on tuxwire's `feature/stats` branch, on top of the new-feed
+# marker work: core gains the `stats` module (`compute_stats_at`, one plain
+# struct of numbers for the Stats tab). It exists on GitHub once that branch
+# has been merged and pushed; merge with an ordinary merge commit (not a squash
+# or rebase) so this hash stays reachable.
+tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "4ac4271e344a9aeff940831dc132b8c79506f1b0" }
 
 # `anyhow` is the catch-all error type tuxwire-core returns from its functions.
 # This crate needs to name that type to convert it into the error Kotlin sees.
