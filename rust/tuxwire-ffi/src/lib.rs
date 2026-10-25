@@ -1376,6 +1376,121 @@ impl Database {
 }
 
 // ---------------------------------------------------------------------------
+// Stats
+// ---------------------------------------------------------------------------
+
+/// A name (a topic or a source) with how many of its articles were read.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct NameCountInfo {
+    /// The topic or source name.
+    pub name: String,
+    /// Articles read from it.
+    pub reads: u32,
+}
+
+/// One bar of the reads-per-week chart.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct WeekCountInfo {
+    /// The Monday that starts the week, as `YYYY-MM-DD`.
+    pub week_start: String,
+    /// Articles read that week.
+    pub reads: u32,
+}
+
+/// Every number on the Stats tab, worked out once by core so the terminal app
+/// and this app always agree. A plain mirror of `tuxwire_core::stats::Stats`.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct StatsInfo {
+    /// Articles read, in all (including reads made on other devices).
+    pub read_total: u32,
+    /// Articles read since this week's Monday.
+    pub read_this_week: u32,
+    /// Articles read since the 1st of this month.
+    pub read_this_month: u32,
+    /// Articles on this device not yet read.
+    pub unread: u32,
+    /// How many feeds there are.
+    pub feeds: u32,
+    /// Articles with a note.
+    pub notes: u32,
+    /// Saved articles.
+    pub saved: u32,
+    /// Days in a row, ending today or yesterday, with at least one read.
+    pub streak_current: u32,
+    /// The longest such run on record.
+    pub streak_best: u32,
+    /// The last weeks, oldest first, for the chart.
+    pub weeks: Vec<WeekCountInfo>,
+    /// The date (`YYYY-MM-DD`) real read times begin, or `None` if no read
+    /// time has been recorded yet.
+    pub tracking_since: Option<String>,
+    /// The topics read most, most first.
+    pub top_topics: Vec<NameCountInfo>,
+    /// The sources read most, most first.
+    pub top_sources: Vec<NameCountInfo>,
+}
+
+/// Copies core's stats into the record Kotlin receives.
+impl From<tuxwire_core::stats::Stats> for StatsInfo {
+    /// Field by field; the two structs have the same shape.
+    fn from(stats: tuxwire_core::stats::Stats) -> StatsInfo {
+        // Core's `NameCount` list becomes the mirror list.
+        let names = |rows: Vec<tuxwire_core::stats::NameCount>| -> Vec<NameCountInfo> {
+            rows.into_iter()
+                .map(|row| NameCountInfo {
+                    name: row.name,
+                    reads: row.reads,
+                })
+                .collect()
+        };
+        StatsInfo {
+            read_total: stats.read_total,
+            read_this_week: stats.read_this_week,
+            read_this_month: stats.read_this_month,
+            unread: stats.unread,
+            feeds: stats.feeds,
+            notes: stats.notes,
+            saved: stats.saved,
+            streak_current: stats.streak_current,
+            streak_best: stats.streak_best,
+            weeks: stats
+                .weeks
+                .into_iter()
+                .map(|week| WeekCountInfo {
+                    week_start: week.week_start,
+                    reads: week.reads,
+                })
+                .collect(),
+            tracking_since: stats.tracking_since,
+            top_topics: names(stats.top_topics),
+            top_sources: names(stats.top_sources),
+        }
+    }
+}
+
+#[uniffi::export]
+impl Database {
+    /// Works out the Stats tab's numbers.
+    ///
+    /// `now_unix_secs` is the current time (`System.currentTimeMillis() / 1000`)
+    /// and `utc_offset_secs` the phone's offset from UTC at this moment
+    /// (`TimeZone.getDefault().getOffset(now) / 1000`); core never reads the
+    /// clock or the time zone itself. The feed count is this database's feed
+    /// table. Nothing is written.
+    pub fn compute_stats(
+        &self,
+        now_unix_secs: i64,
+        utc_offset_secs: i32,
+    ) -> Result<StatsInfo, FfiError> {
+        let storage = self.lock()?;
+        let feeds = storage.list_feeds()?.len() as u32;
+        let stats =
+            tuxwire_core::stats::compute_stats_at(&storage, now_unix_secs, utc_offset_secs, feeds)?;
+        Ok(StatsInfo::from(stats))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -2454,5 +2569,28 @@ mod tests {
         assert_eq!(second.new_articles, 0);
         assert!(second.feeds_with_new.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A new database gives an all-zero Stats, and the feed count is the number
+    /// of feeds added.
+    #[test]
+    fn stats_of_a_new_database_are_empty_and_count_feeds() {
+        let db = Database::open(":memory:".to_string()).unwrap();
+        db.add_feed(
+            "Example".into(),
+            "https://example.com/feed.xml".into(),
+            "demo".into(),
+        )
+        .unwrap();
+        // 2026-10-25 12:00 UTC, no offset.
+        let stats = db.compute_stats(1_792_929_600, 0).unwrap();
+        assert_eq!(stats.feeds, 1);
+        assert_eq!(stats.read_total, 0);
+        assert_eq!(stats.unread, 0);
+        assert_eq!(stats.streak_current, 0);
+        assert_eq!(stats.tracking_since, None);
+        assert!(stats.top_topics.is_empty());
+        // A time that is not a real moment is an error, not a crash.
+        assert!(db.compute_stats(i64::MAX, 0).is_err());
     }
 }
