@@ -1922,7 +1922,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 [[package]]
 name = "tuxwire-core"
 version = "0.1.0"
-source = "git+https://github.com/shanecuster/tuxwire?rev=4ac4271e344a9aeff940831dc132b8c79506f1b0#4ac4271e344a9aeff940831dc132b8c79506f1b0"
+source = "git+https://github.com/shanecuster/tuxwire?rev=32d5408fb9858d391921d8de9ea87458865c09bf#32d5408fb9858d391921d8de9ea87458865c09bf"
 dependencies = [
  "anyhow",
  "chrono",
