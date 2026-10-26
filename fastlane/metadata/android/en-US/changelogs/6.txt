@@ -1,0 +1,1 @@
+New: a Stats tab (articles read, streak, reads per week, top topics and sources), a * beside feeds that got new articles after a refresh, and importing a feed from a saved file for sites that block apps. A blocked site now gets a clearer message. Your feeds, saved articles and notes are untouched.
