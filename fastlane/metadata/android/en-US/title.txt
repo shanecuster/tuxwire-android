@@ -1,1 +1,1 @@
-tuxwire: RSS Reader
+tuxwire: RSS Feed Reader
