@@ -14,18 +14,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** The two top-level views the tab bar switches between. */
+/** The three top-level views the tab bar switches between. */
 enum class Tab(val label: String) {
     /** The feed list (the home screen). */
     FEEDS("Feeds"),
 
     /** The Stats screen. */
     STATS("Stats"),
+
+    /** The About screen (share, rate, privacy policy, source code, version). */
+    ABOUT("About"),
 }
 
 /**
- * The bar at the very bottom of the two top-level screens. It has a thin line
- * above it, like the other bars, and two equal halves; the [selected] tab is
+ * The bar at the very bottom of the three top-level screens. It has a thin line
+ * above it, like the other bars, and three equal parts; the [selected] tab is
  * drawn bold in the accent colour and the other muted, the same way the
  * terminal app marks the chosen option. Each half is a full-width, finger-sized
  * tap target.

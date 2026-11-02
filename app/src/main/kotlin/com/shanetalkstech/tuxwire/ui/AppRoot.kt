@@ -171,8 +171,11 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
     // The phone's back button/gesture goes back one screen, but only while
     // there is a screen to go back to (otherwise it leaves the app as usual).
     BackHandler(enabled = stack.size > 1, onBack = pop)
-    // On the Stats tab "back" returns to the feed list first, then leaves the app.
-    BackHandler(enabled = stack.size == 1 && stack.last() == Screen.Stats) {
+    // On the Stats and About tabs "back" returns to the feed list first, then
+    // leaves the app.
+    BackHandler(
+        enabled = stack.size == 1 && (stack.last() == Screen.Stats || stack.last() == Screen.About),
+    ) {
         stack = listOf(Screen.Home)
     }
 
@@ -249,7 +252,9 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                                 onAddFeed = { push(Screen.AddFeed("")) },
                             )
                             // The Stats tab.
-                        Screen.Stats -> StatsScreen(db = db)
+                            Screen.Stats -> StatsScreen(db = db)
+                            // The About tab.
+                            Screen.About -> AboutScreen()
                         // Import and export of feed lists.
                             Screen.Opml -> OpmlScreen(
                                 db = db,
@@ -372,17 +377,28 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                             )
                         }
                     }
-                    // The tab bar shows only on the two top-level screens (the
-                    // feed list and Stats); deeper screens have their own bars.
-                    // `stack.size == 1` means nothing is open on top of a tab.
-                    if (stack.size == 1 && (stack.last() == Screen.Home || stack.last() == Screen.Stats)) {
+                    // The tab bar shows only on the three top-level screens (the
+                    // feed list, Stats and About); deeper screens have their own
+                    // bars. `stack.size == 1` means nothing is open on top of a tab.
+                    val top = stack.last()
+                    if (stack.size == 1 && (top == Screen.Home || top == Screen.Stats || top == Screen.About)) {
                         TabBar(
-                            selected = if (stack.last() == Screen.Stats) Tab.STATS else Tab.FEEDS,
+                            selected = when (top) {
+                                Screen.Stats -> Tab.STATS
+                                Screen.About -> Tab.ABOUT
+                                else -> Tab.FEEDS
+                            },
                             onSelect = { tab ->
                                 // Switching tabs starts that tab afresh, as if
                                 // "home" had been pressed.
                                 scrollMemory.clear()
-                                stack = listOf(if (tab == Tab.STATS) Screen.Stats else Screen.Home)
+                                stack = listOf(
+                                    when (tab) {
+                                        Tab.STATS -> Screen.Stats
+                                        Tab.ABOUT -> Screen.About
+                                        Tab.FEEDS -> Screen.Home
+                                    },
+                                )
                             },
                         )
                     }
