@@ -1,0 +1,1 @@
+New: an About tab, to the right of Stats. Share tuxwire with a friend, rate it on Google Play, read the privacy policy, find the source code and see which version you have. Your feeds, saved articles and notes are untouched.
