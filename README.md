@@ -113,7 +113,7 @@ one and the APK may differ, so change the table and the source together.
 | --- | --- | --- |
 | JDK | 21 (OpenJDK; not enforced, no download plugin) | installed on the machine |
 | Gradle | 9.6.0 (checksum-verified) | `gradle/wrapper/gradle-wrapper.properties` |
-| Android Gradle Plugin | 9.4.1 | `gradle/libs.versions.toml` |
+| Android Gradle Plugin | 9.5.0 | `gradle/libs.versions.toml` |
 | Kotlin | 2.2.10 | `gradle/libs.versions.toml` |
 | SDK Build-Tools | 36.0.0 | `buildToolsVersion` in `app/build.gradle.kts` |
 | Android platform | API 37 | `compileSdk` in `app/build.gradle.kts` |
