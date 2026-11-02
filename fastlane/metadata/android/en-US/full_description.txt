@@ -1,29 +1,48 @@
-tuxwire is an RSS reader that looks and feels like a terminal: monospace text, bordered panels, and colour themes shared with the tuxwire terminal app.
+tuxwire is an RSS reader that looks and feels like a terminal. Follow the blogs and sites you care about in one calm, distraction-free place: monospace text, bordered panels and colour themes, with no ads, no accounts and no tracking.
+
+Why you will like it
+- Stay focused. Every feed is plain text in a clean layout, so you read the words and nothing else.
+- Keep what matters. Save any article and attach your own note to it, then export everything to one Markdown file.
+- Stay in control. Your feeds, saved articles and notes live on your phone. Nothing is sent to the developer.
+- Use it with one hand. Pinned top and bottom bars keep every control within reach of your thumb.
 
 Feeds and reading
-- Add a feed by its address or by a blog's address; tuxwire finds the feed for you.
-- Browse feeds by topic, then articles, then a plain-text summary of each one.
-- Open the full article in your browser when you want it.
-- Share a page from your browser to tuxwire, then choose each time: read it later, save it, or add its feed.
-- Import and export your feed list as OPML, the format other feed readers use.
-- Pinned top and bottom bars keep everything within reach of one hand.
+- Add a feed by its address, or by a blog's address: tuxwire finds the feed for you.
+- Browse your feeds by topic, then articles, then a plain-text summary of each one.
+- A * beside a feed shows it got new articles after a refresh.
+- Open the full article in your browser whenever you want the whole page.
+- Import and export your feed list as OPML, the format other RSS readers use, so moving in or out takes a minute.
+- Some sites block apps. For those, import the feed from a file you saved, and tuxwire tells you clearly when a site refuses.
 
 Read later
-- Keep a list of links to open later: paste one in, or share it from your browser. Opened links stay on the list, drawn like read articles, until you drop them (it asks first) or save them.
-- tuxwire reads the page's title so a link has a name. That is the only thing it fetches from the page.
+- Keep a list of links to open later: paste one in, or share it from your browser.
+- Opened links stay on the list, drawn like read articles, until you drop them or save them. It always asks first.
+- tuxwire reads only the page's title so a link has a name. Nothing else is fetched from the page.
+
+Share from your browser
+- Use Android's Share menu to send a page to tuxwire, then choose each time: read it later, save it, or add its feed.
 
 Saved articles and notes
-- Save any article and attach a note to it.
-- Un-saving, deleting a note, and anything else that removes something always asks first.
-- Export every saved article and note to one Markdown file, through Android's own file picker.
+- Save an article and write a note on it: why it mattered, what to follow up on, a quote you liked.
+- Export every saved article and note to a single Markdown file through Android's own file picker, ready for your notes app.
+- Un-saving, deleting a note and anything else that removes something always asks first.
+
+Know your reading habits
+- The Stats tab shows articles read, your current and best streak, reads per week, and the topics and sources you read most.
 
 Optional sync to your own server
-- Sync is off until you turn it on. It copies only your saved articles, notes and Read Later links to a CouchDB server that you run yourself, and only when you tap "sync now". A separate switch, also off by default, can copy your feed list too, so feeds you add on one device appear on the others. Nothing is removed without asking you. A third switch, also off by default, can share which articles you have opened, so an article read on one device shows as read on the others.
+- Sync is off until you turn it on. It copies your saved articles, notes and Read Later links to a CouchDB server that you run yourself, and only when you tap "sync now".
+- Separate switches, all off by default, can also copy your feed list and which articles you have opened, so everything matches across your devices.
 - The server address must use https, and the password is stored encrypted on the phone using the Android Keystore.
 
-Privacy
-- The only permission is internet access, to download feeds.
-- No accounts, no ads, no analytics, no tracking. Your data stays on the phone unless you set up your own sync server.
-- The app opts out of cloud backups.
+Private by design
+- The only permission is internet access, to download your feeds.
+- No accounts, no ads, no analytics, no tracking and no crash reporting.
+- The app opts out of cloud backups. Uninstalling removes your data.
+- Read the full privacy policy from the About tab.
 
-tuxwire is free software under the MIT licence. The Rust engine is shared with the terminal version.
+Free and open source
+- tuxwire is free software under the MIT licence. The Rust engine is shared with the tuxwire terminal app, so both behave the same way.
+- Share tuxwire with a friend or rate it on Google Play from the About tab.
+
+If you want a minimal, ad-free RSS reader with a terminal look, tuxwire is for you.

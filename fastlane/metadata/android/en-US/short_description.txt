@@ -1,1 +1,1 @@
-A terminal-style RSS reader with saved articles and notes
+Terminal-style RSS reader: save articles, add notes. No ads, no tracking.
