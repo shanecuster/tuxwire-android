@@ -677,6 +677,26 @@ impl Database {
         Ok(storage.remove_feed(id)?)
     }
 
+    /// Changes a feed's name and topic, and returns whether the feed existed.
+    ///
+    /// Only the name and topic can change. The address stays as it is, because
+    /// a feed's articles are found by its address (and feed-list sync treats it
+    /// as the feed's identity); a wrong address is fixed by removing the feed
+    /// and adding it again.
+    ///
+    /// Like [`Database::add_feed`], the values are trimmed and blank ones are
+    /// rejected here, so an edit can never leave a feed with an empty label.
+    pub fn update_feed(&self, id: i64, name: String, topic: String) -> Result<bool, FfiError> {
+        let (name, topic) = (name.trim(), topic.trim());
+        if name.is_empty() || topic.is_empty() {
+            return Err(FfiError::Failed {
+                detail: "a feed needs a name and a topic".to_string(),
+            });
+        }
+        let storage = self.lock()?;
+        Ok(storage.update_feed(id, name, topic)?)
+    }
+
     /// Adds every usable feed from the text of an OPML file and says what
     /// happened. Feeds already in the list are left alone. A file that is not
     /// OPML, or is too big or damaged, fails with a readable message and adds
@@ -1764,6 +1784,53 @@ mod tests {
         // Removing the only "tech" feed removes the topic too.
         assert!(db.remove_feed(ars).unwrap());
         assert_eq!(db.list_topics().unwrap().len(), 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A feed's name and topic can be edited (typos fixed, feed moved to
+    /// another topic) while its address and ID stay put. Blank values and
+    /// unknown IDs are handled, and the old topic disappears once empty.
+    #[test]
+    fn a_feed_can_be_renamed_and_moved_to_another_topic() {
+        let (db, dir) = temp_database();
+        let id = db
+            .add_feed(
+                "Arch Linxu News".into(),
+                "https://arch/feed".into(),
+                "linxu".into(),
+            )
+            .unwrap();
+
+        // Surrounding spaces are trimmed, as when a feed is added.
+        assert!(
+            db.update_feed(id, "  Arch Linux News ".into(), " linux ".into())
+                .unwrap()
+        );
+        let feeds = db.list_all_feeds().unwrap();
+        assert_eq!(feeds.len(), 1);
+        assert_eq!(feeds[0].id, id);
+        assert_eq!(feeds[0].name, "Arch Linux News");
+        assert_eq!(feeds[0].topic, "linux");
+        // The address is unchanged, so its articles are still found.
+        assert_eq!(feeds[0].url, "https://arch/feed");
+
+        // The misspelled topic is gone; only the corrected one remains.
+        let topics: Vec<String> = db
+            .list_topics()
+            .unwrap()
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        assert_eq!(topics, ["linux"]);
+
+        // Blank values are refused and change nothing.
+        assert!(db.update_feed(id, "  ".into(), "linux".into()).is_err());
+        assert!(db.update_feed(id, "Name".into(), "".into()).is_err());
+        assert_eq!(db.list_all_feeds().unwrap()[0].name, "Arch Linux News");
+
+        // An ID that does not exist reports "nothing updated".
+        assert!(!db.update_feed(id + 1000, "x".into(), "y".into()).unwrap());
 
         let _ = std::fs::remove_dir_all(&dir);
     }
