@@ -250,6 +250,7 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                                 onOpenReadLater = { push(Screen.ReadLater) },
                                 onOpenSync = { push(Screen.Sync) },
                                 onAddFeed = { push(Screen.AddFeed("")) },
+                                onEditFeed = { push(Screen.EditFeed(it.id)) },
                             )
                             // The Stats tab.
                             Screen.Stats -> StatsScreen(db = db)
@@ -338,6 +339,7 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                                 onOpenReadLater = {},
                                 onOpenSync = {},
                                 onAddFeed = { push(Screen.AddFeed(screen.topic)) },
+                                onEditFeed = { push(Screen.EditFeed(it.id)) },
                             )
                             is Screen.Articles -> ArticlesScreen(
                                 db = db,
@@ -371,6 +373,13 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                                 db = db,
                                 startTopic = screen.topic,
                                 startAddress = screen.address,
+                                onHome = goHome,
+                                onBack = pop,
+                                onDone = pop,
+                            )
+                            is Screen.EditFeed -> EditFeedScreen(
+                                db = db,
+                                feedId = screen.feedId,
                                 onHome = goHome,
                                 onBack = pop,
                                 onDone = pop,

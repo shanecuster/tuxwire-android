@@ -14,8 +14,8 @@ import androidx.compose.runtime.saveable.Saver
  *
  * The drill-down is Home (every feed), then optionally Feeds (one topic's
  * feeds, reached by tapping a topic label), then Articles (one feed's
- * articles), then Article (one article's summary). [AddFeed] opens on top of
- * either of the first two, so it never sits beside [Article] in the stack and
+ * articles), then Article (one article's summary). [AddFeed] and [EditFeed]
+ * open on top of either of the first two, so it never sits beside [Article] in the stack and
  * the two can share a depth. [Opml] (import and export), [Sync] (optional
  * sync settings), [Saved] (saved articles and notes) and [ReadLater] (links to
  * read later) open from home; an article opened from [Saved] goes to
@@ -70,6 +70,13 @@ sealed class Screen(val depth: Int) {
     data class AddFeed(val topic: String, val address: String = "") : Screen(3)
 
     /**
+     * The edit-feed form for the feed with database ID [feedId]. Only the ID is
+     * kept here; the form loads the feed's current name and topic itself, so a
+     * saved screen never holds stale or awkward text.
+     */
+    data class EditFeed(val feedId: Long) : Screen(3)
+
+    /**
      * The question about one link: read it later, save it, or (when it was
      * shared from another app) add it as a feed. [address] is the link,
      * [titleHint] a title that came with it (empty for none), and [fromShare]
@@ -100,6 +107,7 @@ sealed class Screen(val depth: Int) {
         is Article -> listOf("R", topic, feedName, feedUrl, articleId.toString())
             .joinToString(SEPARATOR)
         is AddFeed -> listOf("N", topic, address).joinToString(SEPARATOR)
+        is EditFeed -> listOf("E", feedId.toString()).joinToString(SEPARATOR)
     }
 
     companion object {
@@ -143,6 +151,9 @@ sealed class Screen(val depth: Int) {
                     parts.getOrElse(4) { "" }.toLongOrNull() ?: 0L,
                 )
                 "N" -> AddFeed(parts.getOrElse(1) { "" }, parts.getOrElse(2) { "" })
+                // A damaged ID becomes 0, which finds no feed and shows a
+                // message instead of crashing.
+                "E" -> EditFeed(parts.getOrElse(1) { "" }.toLongOrNull() ?: 0L)
                 else -> Home
             }
         }

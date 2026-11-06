@@ -38,8 +38,9 @@ import uniffi.tuxwire_ffi.FeedInfo
  * - **One topic** (`topic == "linux"`): only that topic's feeds. The top bar
  *   has a home button and the bottom bar has "back" and "add feed here".
  *
- * Tapping a feed's name slides to its articles; "x" (after a confirmation)
- * unsubscribes from it.
+ * Tapping a feed's name slides to its articles; pressing and holding it opens
+ * the edit form (name and topic); "x" (after a confirmation) unsubscribes
+ * from it.
  *
  * @param db the open database.
  * @param topic the topic to show, or `null` for every feed (the home screen).
@@ -60,6 +61,7 @@ import uniffi.tuxwire_ffi.FeedInfo
  * @param onOpenReadLater opens the Read Later list (home only).
  * @param onOpenSync opens the optional sync settings (home only).
  * @param onAddFeed called when "+ add feed" is tapped.
+ * @param onEditFeed called with a feed when it is pressed and held.
  */
 @Composable
 fun FeedsScreen(
@@ -80,6 +82,7 @@ fun FeedsScreen(
     onOpenReadLater: () -> Unit,
     onOpenSync: () -> Unit,
     onAddFeed: () -> Unit,
+    onEditFeed: (FeedInfo) -> Unit,
 ) {
     val colors = LocalTuxwireColors.current
 
@@ -301,7 +304,11 @@ fun FeedsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                TuiRow(onClick = { onOpenFeed(feed) }) {
+                                // A press-and-hold opens the edit form.
+                                TuiRow(
+                                    onClick = { onOpenFeed(feed) },
+                                    onLongClick = { onEditFeed(feed) },
+                                ) {
                                     // A ` *` after the name while this feed has new
                                     // articles that have not been opened yet. Reading
                                     // `freshFeeds.has` here is what makes the list
@@ -332,6 +339,14 @@ fun FeedsScreen(
                             TuiButton(label = "x", onClick = { pendingRemoval = feed })
                         }
                     }
+                    // A hint, because a long press has nothing on screen to
+                    // show it is there.
+                    MonoText(
+                        text = "press and hold a feed to edit its name or topic",
+                        color = colors.textMuted,
+                        size = 12.sp,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
             }
         }
