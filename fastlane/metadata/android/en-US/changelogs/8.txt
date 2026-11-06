@@ -1,0 +1,1 @@
+New: press and hold a feed to fix its name or topic, so a typo no longer means removing and re-adding it. Your feeds, saved articles and notes are untouched.

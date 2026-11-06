@@ -122,8 +122,8 @@ android {
         targetSdk = 37
         // Must go up with every release (stores refuse a lower or equal number).
         // The matching F-Droid changelog is fastlane/.../changelogs/<versionCode>.txt.
-        versionCode = 7
-        versionName = "0.3.0"
+        versionCode = 8
+        versionName = "0.3.1"
 
         ndk {
             // Keep only the CPU types we built (see `packagedAbis` above).
