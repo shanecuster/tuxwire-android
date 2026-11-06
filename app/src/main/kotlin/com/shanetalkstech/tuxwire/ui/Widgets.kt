@@ -1,6 +1,8 @@
 package com.shanetalkstech.tuxwire.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -103,18 +105,26 @@ fun TuiButton(
  *
  * @param onClick called when the row is tapped.
  * @param modifier optional layout tweaks.
+ * @param onLongClick called when the row is pressed and held, or `null` (the
+ *   default) for rows that do nothing on a long press.
  * @param content the row's contents, laid out vertically.
  */
+// `combinedClickable` is the Compose modifier that understands both a tap and
+// a long press on the same element. It is still marked experimental in some
+// Compose versions, hence the opt-in; it is harmless where it is stable.
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TuiRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            // With no long-press action this behaves exactly like `clickable`.
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(vertical = 8.dp),
     ) {
         content()
