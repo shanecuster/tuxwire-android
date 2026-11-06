@@ -31,13 +31,12 @@ resolver = "3"
 # master can never silently break this app. To move to a newer core, change
 # this hash on purpose, then rebuild and test.
 #
-# This commit is on tuxwire's `feature/robust-feeds` branch, on top of the
-# stats work: a site that answers HTTP 403 now gets a message suggesting the
-# feed be saved from a browser and added as a file, and a feed row in the
-# terminal app is found by address (Android already worked that way). It exists
-# on GitHub once that branch has been merged and pushed; merge with an ordinary
-# merge commit (not a squash or rebase) so this hash stays reachable.
-tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "32d5408fb9858d391921d8de9ea87458865c09bf" }
+# This commit is on tuxwire's `feature/update-feed` branch. It adds
+# `Storage::update_feed`, which changes a feed's name and topic, so the app can
+# fix a typo without removing and re-adding the feed. It exists on GitHub once
+# that branch has been merged and pushed; merge with an ordinary merge commit
+# or a fast-forward (not a squash or rebase) so this hash stays reachable.
+tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "e45a98c85f93397ada78a55bbbe4d09d1889da8b" }
 
 # `anyhow` is the catch-all error type tuxwire-core returns from its functions.
 # This crate needs to name that type to convert it into the error Kotlin sees.
