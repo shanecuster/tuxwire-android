@@ -151,7 +151,7 @@ impl From<Rgb> for RgbColor {
     }
 }
 
-/// The eleven colour slots every tuxwire theme fills in. Mirror of core's
+/// The twelve colour slots every tuxwire theme fills in. Mirror of core's
 /// `Palette`; see that type for what each slot is used for.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct ThemePalette {
@@ -177,6 +177,9 @@ pub struct ThemePalette {
     pub accent_breaking: RgbColor,
     /// The selected row's highlight, key labels, focused fields.
     pub accent_selected: RgbColor,
+    /// New articles (fetched since the app opened and still unread) and the
+    /// new-feed marker: a blue that stands apart from the unread colour.
+    pub accent_new: RgbColor,
 }
 
 /// Converts core's `Palette` into the mirror type, slot by slot.
@@ -196,6 +199,7 @@ impl From<Palette> for ThemePalette {
             accent_saved: p.accent_saved.into(),
             accent_breaking: p.accent_breaking.into(),
             accent_selected: p.accent_selected.into(),
+            accent_new: p.accent_new.into(),
         }
     }
 }
@@ -461,6 +465,11 @@ pub struct RefreshSummary {
     /// The addresses of the feeds that got at least one new article, each once,
     /// so the feed list can mark them. Empty when nothing was new.
     pub feeds_with_new: Vec<String>,
+    /// The database IDs of the articles that were new, in ascending order. The
+    /// app keeps these for the rest of the session so it can draw those
+    /// articles in the "new" colour until they are read. Empty when nothing
+    /// was new.
+    pub new_article_ids: Vec<i64>,
 }
 
 /// Turns core's fetch tally into the record the app shows.
@@ -477,6 +486,13 @@ impl From<&FetchReport> for RefreshSummary {
             // The tally has no database to ask which feeds the new articles
             // belong to; `Database::refresh` fills this in afterwards.
             feeds_with_new: Vec::new(),
+            // Core keeps the IDs in a set (no order); copy them into a list
+            // and sort it so the result is the same every time.
+            new_article_ids: {
+                let mut ids: Vec<i64> = report.new_article_ids.iter().copied().collect();
+                ids.sort_unstable();
+                ids
+            },
         }
     }
 }
@@ -756,6 +772,25 @@ impl Database {
         // gather the results into a `Vec`.
         let articles = storage.articles_by_feed(&feed_url)?;
         Ok(articles.iter().map(ArticleInfo::from).collect())
+    }
+
+    /// The newest articles from every feed together (the terminal's "All
+    /// feeds" row), at most `limit` of them, newest first.
+    ///
+    /// Core hands back every stored article, so the cut to `limit` happens
+    /// here: it keeps the list the app builds, and the data crossing to
+    /// Kotlin, small however many articles have piled up.
+    pub fn list_all_articles(&self, limit: u32) -> Result<Vec<ArticleInfo>, FfiError> {
+        let storage = self.lock()?;
+        // `Scope::All` means "no filtering by feed".
+        let articles = storage.articles_in_scope(&Scope::All)?;
+        // `take` stops after `limit` items; `limit as usize` converts the
+        // number type Kotlin sent into the one Rust uses for counts.
+        Ok(articles
+            .iter()
+            .take(limit as usize)
+            .map(ArticleInfo::from)
+            .collect())
     }
 
     /// One article in full (including its summary), for the summary screen.
@@ -1537,6 +1572,30 @@ mod tests {
 
         // The default theme's name appears in the list.
         assert!(themes.iter().any(|t| t.name == default_theme_name()));
+    }
+
+    /// Every built-in theme carries the "new article" blue, and it is not the
+    /// same colour as unread, or new articles would not stand out.
+    #[test]
+    fn every_theme_has_a_new_colour_that_differs_from_unread() {
+        for theme in list_themes() {
+            assert_ne!(
+                theme.colors.accent_new, theme.colors.accent_unread,
+                "theme {} draws new articles like unread ones",
+                theme.name
+            );
+        }
+    }
+
+    /// A refresh summary lists the new article IDs in ascending order, however
+    /// core's unordered set happened to hand them over.
+    #[test]
+    fn refresh_summary_lists_new_article_ids_sorted() {
+        let mut report = FetchReport::default();
+        report.new_article_ids.extend([9, 3, 7]);
+        let summary = RefreshSummary::from(&report);
+        assert_eq!(summary.new_article_ids, vec![3, 7, 9]);
+        assert_eq!(summary.new_articles, 3);
     }
 
     /// Colours survive the trip through the mirror types unchanged.
