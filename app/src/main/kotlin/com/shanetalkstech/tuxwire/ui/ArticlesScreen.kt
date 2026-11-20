@@ -1,10 +1,12 @@
 package com.shanetalkstech.tuxwire.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -34,6 +36,13 @@ import uniffi.tuxwire_ffi.Database
  * The top bar (home button and breadcrumb) and the bottom bar ("back" and
  * "refresh") stay put; only the list between them scrolls.
  *
+ * On a wide screen (an unfolded foldable, a tablet) the same list is also the
+ * right-hand pane of the home screen. Then [embedded] is `true`: the screen
+ * draws no bars of its own (the home screen's bars span both panes) and shows
+ * a small header with the name and a refresh button instead. With [allFeeds]
+ * it lists the newest articles of every feed together, like the terminal app's
+ * "All feeds" row.
+ *
  * @param db the open database.
  * @param topic the feed's topic (for the header only).
  * @param feedName the feed's name (for the header only).
@@ -46,6 +55,18 @@ import uniffi.tuxwire_ffi.Database
  * @param onHome jumps back to the home screen.
  * @param onBack goes back to the feed list.
  * @param onOpenArticle opens the summary screen for the article with this ID.
+ * @param allFeeds list the newest articles from every feed instead of one feed
+ *   ([feedUrl] is then ignored). A refresh then refreshes every feed.
+ * @param embedded draw as the right-hand pane of the two-pane home screen: no
+ *   top or bottom bar, a small header instead ([onHome] and [onBack] are unused).
+ * @param reloadKey changing this number reloads the list. The two-pane home
+ *   bumps it when something outside this pane (such as a refresh in the feed
+ *   list) may have changed the articles.
+ * @param onChanged called after this list changed something the rest of the
+ *   screen shows (a refresh, or an article marked read), so the feed list's
+ *   unread counts can be reloaded.
+ * @param freshFeeds when given, an all-feeds refresh adds the feeds that got new
+ *   articles to it, so the feed list marks them.
  */
 @Composable
 fun ArticlesScreen(
@@ -56,9 +77,14 @@ fun ArticlesScreen(
     scrollMemory: ScrollMemory,
     scrollKey: String,
     newArticles: NewArticles,
-    onHome: () -> Unit,
-    onBack: () -> Unit,
     onOpenArticle: (Long) -> Unit,
+    onHome: () -> Unit = {},
+    onBack: () -> Unit = {},
+    allFeeds: Boolean = false,
+    embedded: Boolean = false,
+    reloadKey: Int = 0,
+    onChanged: () -> Unit = {},
+    freshFeeds: FreshFeeds? = null,
 ) {
     val colors = LocalTuxwireColors.current
     val context = LocalContext.current
@@ -78,8 +104,15 @@ fun ArticlesScreen(
 
     // Bumped after a refresh so the list loads again.
     var version by remember { mutableIntStateOf(0) }
-    val articles by produceState<Result<List<ArticleInfo>>?>(null, db, feedUrl, version) {
-        value = runCatching { onIo { db.listArticles(feedUrl) } }
+    val articles by produceState<Result<List<ArticleInfo>>?>(
+        null, db, feedUrl, allFeeds, version, reloadKey,
+    ) {
+        value = runCatching {
+            onIo {
+                // "All feeds" is capped (the newest few hundred); one feed is not.
+                if (allFeeds) db.listAllArticles(ALL_FEEDS_LIMIT) else db.listArticles(feedUrl)
+            }
+        }
     }
 
     // IDs of articles tapped on this screen. They are drawn as read at once,
@@ -93,41 +126,35 @@ fun ArticlesScreen(
     var message by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
-    PinnedLayout(
-        top = { TopBar(path = "tuxwire / $topic / $feedName", onHome = onHome) },
-        bottom = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (message.isNotEmpty()) MonoText(message, colors.textMuted)
-                BottomBar {
-                    TuiButton(label = "back", onClick = onBack)
-                    TuiButton(
-                        label = if (busy) "refreshing..." else "refresh",
-                        enabled = !busy,
-                        onClick = {
-                            busy = true
-                            message = ""
-                            scope.launch {
-                                try {
-                                    val summary = db.refreshFeed(feedUrl)
-                                    message = summary.describe()
-                                    // Remember which articles are new, so they are
-                                    // drawn in the "new" blue once the list reloads.
-                                    newArticles.add(summary.newArticleIds)
-                                    version++
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (t: Throwable) {
-                                    message = "error: ${t.explain()}"
-                                } finally {
-                                    busy = false
-                                }
-                            }
-                        },
-                    )
-                }
+    // Downloads this feed (or every feed, in all-feeds mode) and reloads the
+    // list. Used by the "refresh" button, wherever that button is drawn.
+    val doRefresh: () -> Unit = {
+        busy = true
+        message = ""
+        scope.launch {
+            try {
+                val summary = if (allFeeds) db.refreshAll() else db.refreshFeed(feedUrl)
+                message = summary.describe()
+                // Remember which articles are new, so they are drawn in the
+                // "new" blue once the list reloads.
+                newArticles.add(summary.newArticleIds)
+                // After refreshing everything, mark the feeds that got something.
+                if (allFeeds) freshFeeds?.add(summary.feedsWithNew)
+                version++
+                onChanged()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                message = "error: ${t.explain()}"
+            } finally {
+                busy = false
             }
-        },
-    ) {
+        }
+    }
+
+    // The list itself (loading text, error, empty note, or the rows). It is a
+    // value, not inline, so the two layouts below can both place it.
+    val listContent: @Composable () -> Unit = {
         val loaded = articles
         when {
             loaded == null -> MonoText("loading...", colors.textMuted)
@@ -159,6 +186,8 @@ fun ArticlesScreen(
                                     readNow = readNow + article.id
                                     scope.launch {
                                         runCatching { onIo { db.markRead(article.id) } }
+                                        // The feed list's unread counts changed too.
+                                        onChanged()
                                         if (article.hasSummary) {
                                             onOpenArticle(article.id)
                                         } else if (!openInBrowser(context, article.url)) {
@@ -211,4 +240,59 @@ fun ArticlesScreen(
             }
         }
     }
+
+    if (embedded) {
+        // The right-hand pane: a header line, then the list. No bars here; the
+        // home screen's own bars sit under and over both panes.
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                MonoText(
+                    text = if (allFeeds) "all feeds" else "$topic / $feedName",
+                    color = colors.accentSelected,
+                    bold = true,
+                    modifier = Modifier.weight(1f),
+                )
+                TuiButton(
+                    label = if (busy) "refreshing..." else "refresh",
+                    enabled = !busy,
+                    onClick = doRefresh,
+                )
+            }
+            if (message.isNotEmpty()) MonoText(message, colors.textMuted)
+            // `weight(1f)` gives the list all the height the header left over.
+            Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 8.dp)) {
+                listContent()
+            }
+        }
+    } else {
+        PinnedLayout(
+            top = { TopBar(path = "tuxwire / $topic / $feedName", onHome = onHome) },
+            bottom = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (message.isNotEmpty()) MonoText(message, colors.textMuted)
+                    BottomBar {
+                        TuiButton(label = "back", onClick = onBack)
+                        TuiButton(
+                            label = if (busy) "refreshing..." else "refresh",
+                            enabled = !busy,
+                            onClick = doRefresh,
+                        )
+                    }
+                }
+            },
+        ) {
+            listContent()
+        }
+    }
 }
+
+/**
+ * How many articles the "all feeds" list shows at most: the newest few hundred.
+ * (A phone does not need thousands of rows, and keeping it small keeps the
+ * list quick to build.)
+ */
+private val ALL_FEEDS_LIMIT = 500u
