@@ -6,10 +6,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,6 +84,38 @@ fun TopBar(path: String, onHome: () -> Unit) {
     ) {
         TuiButton(label = "home", onClick = onHome)
         MonoText(path, colors.accentSelected, bold = true)
+    }
+}
+
+/**
+ * The widest a form, a settings page or a reading page should get. On a phone
+ * the screen is narrower than this, so nothing changes; on an unfolded
+ * foldable or a tablet the page stays a comfortable column in the middle
+ * instead of stretching its text and boxes across the whole screen.
+ */
+val MAX_CONTENT_WIDTH = 640.dp
+
+/**
+ * Centres [content] in a column no wider than [MAX_CONTENT_WIDTH].
+ *
+ * @param enabled when `false` the content is drawn as it is, full width. The
+ *   lists (feeds, articles, saved, read later) pass `false`: long titles are
+ *   better with the room.
+ * @param content the screen to draw.
+ */
+@Composable
+fun CappedWidth(enabled: Boolean, content: @Composable () -> Unit) {
+    if (enabled) {
+        // The outer box fills the screen and centres its child at the top; the
+        // inner one is at most 640dp wide (`widthIn`) and, being asked to fill
+        // the width, takes exactly that on a wide screen or all of it on a phone.
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            Box(modifier = Modifier.fillMaxHeight().widthIn(max = MAX_CONTENT_WIDTH).fillMaxWidth()) {
+                content()
+            }
+        }
+    } else {
+        content()
     }
 }
 
