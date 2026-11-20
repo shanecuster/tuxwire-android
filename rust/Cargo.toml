@@ -31,12 +31,12 @@ resolver = "3"
 # master can never silently break this app. To move to a newer core, change
 # this hash on purpose, then rebuild and test.
 #
-# This commit is on tuxwire's `feature/update-feed` branch. It adds
-# `Storage::update_feed`, which changes a feed's name and topic, so the app can
-# fix a typo without removing and re-adding the feed. It exists on GitHub once
-# that branch has been merged and pushed; merge with an ordinary merge commit
-# or a fast-forward (not a squash or rebase) so this hash stays reachable.
-tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "e45a98c85f93397ada78a55bbbe4d09d1889da8b" }
+# This commit is on tuxwire's `master`. Compared with the previous pin it adds
+# only two things, both additive: the `accent_new` theme colour (the blue for
+# new articles) and `Storage::articles_in_scope` plus per-feed unread counts
+# (what the terminal's "All feeds" row uses). The two-pane layout for
+# foldables needs both.
+tuxwire-core = { git = "https://github.com/shanecuster/tuxwire", rev = "712b5caecfe7322fa0b2b0aa0f4f83d129ef3b01" }
 
 # `anyhow` is the catch-all error type tuxwire-core returns from its functions.
 # This crate needs to name that type to convert it into the error Kotlin sees.
