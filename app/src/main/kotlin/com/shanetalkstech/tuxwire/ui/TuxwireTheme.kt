@@ -33,7 +33,7 @@ val MonoFont: FontFamily = FontFamily(
 fun RgbColor.toColor(): Color = Color(r.toInt(), g.toInt(), b.toInt())
 
 /**
- * The same 11 colour "slots" as the terminal app's `Theme`, but as Compose
+ * The same 12 colour "slots" as the terminal app's `Theme`, but as Compose
  * colours. UI code asks for a slot by name (never a hard-coded colour), so
  * switching theme repaints everything.
  */
@@ -60,6 +60,11 @@ data class TuxwireColors(
     val accentBreaking: Color,
     /** The highlighted / selected row. */
     val accentSelected: Color,
+    /**
+     * New articles (brought in by a refresh since the app opened, and still
+     * unread) and feeds marked new. A blue, so they stand apart from unread.
+     */
+    val accentNew: Color,
 )
 
 /** Builds the Compose colour set from a palette received from Rust. */
@@ -75,6 +80,7 @@ fun ThemePalette.toTuxwireColors(): TuxwireColors = TuxwireColors(
     accentSaved = accentSaved.toColor(),
     accentBreaking = accentBreaking.toColor(),
     accentSelected = accentSelected.toColor(),
+    accentNew = accentNew.toColor(),
 )
 
 /**
@@ -97,6 +103,8 @@ val LocalTuxwireColors = compositionLocalOf {
         accentSaved = Color.Yellow,
         accentBreaking = Color.Red,
         accentSelected = Color.Cyan,
+        // A plain blue, only used if no theme has loaded yet.
+        accentNew = Color(0xFF5AA9FF),
     )
 }
 
