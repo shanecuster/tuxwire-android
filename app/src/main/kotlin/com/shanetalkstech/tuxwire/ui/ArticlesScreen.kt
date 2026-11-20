@@ -41,6 +41,8 @@ import uniffi.tuxwire_ffi.Database
  * @param scrollMemory remembers where the list was scrolled to, so coming back
  *   from an article finds the list in the same place (handy in a long feed).
  * @param scrollKey which entry of [scrollMemory] belongs to this list.
+ * @param newArticles the articles a refresh brought in since the app opened. An
+ *   unread one is drawn in the "new" blue; a refresh here adds to it.
  * @param onHome jumps back to the home screen.
  * @param onBack goes back to the feed list.
  * @param onOpenArticle opens the summary screen for the article with this ID.
@@ -53,6 +55,7 @@ fun ArticlesScreen(
     feedUrl: String,
     scrollMemory: ScrollMemory,
     scrollKey: String,
+    newArticles: NewArticles,
     onHome: () -> Unit,
     onBack: () -> Unit,
     onOpenArticle: (Long) -> Unit,
@@ -105,7 +108,11 @@ fun ArticlesScreen(
                             message = ""
                             scope.launch {
                                 try {
-                                    message = db.refreshFeed(feedUrl).describe()
+                                    val summary = db.refreshFeed(feedUrl)
+                                    message = summary.describe()
+                                    // Remember which articles are new, so they are
+                                    // drawn in the "new" blue once the list reloads.
+                                    newArticles.add(summary.newArticleIds)
                                     version++
                                 } catch (e: CancellationException) {
                                     throw e
@@ -161,9 +168,16 @@ fun ArticlesScreen(
                                 },
                             ) {
                                 // A leading "*" marks unread articles in plain text.
+                                // Same priority as the terminal app: read first, then
+                                // new (arrived since launch and still unread), then
+                                // plain unread.
                                 MonoText(
                                     text = (if (isRead) "  " else "* ") + article.title,
-                                    color = if (isRead) colors.accentRead else colors.accentUnread,
+                                    color = when {
+                                        isRead -> colors.accentRead
+                                        newArticles.has(article.id) -> colors.accentNew
+                                        else -> colors.accentUnread
+                                    },
                                     bold = !isRead,
                                 )
                                 MonoText(

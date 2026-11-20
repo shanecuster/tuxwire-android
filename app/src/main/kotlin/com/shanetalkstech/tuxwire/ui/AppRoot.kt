@@ -127,6 +127,11 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
     // marks must outlast it. Opening a feed clears its mark (see `onOpenFeed`).
     val freshFeeds = rememberSaveable(saver = FreshFeeds.Saver) { FreshFeeds() }
 
+    // The articles a refresh brought in since the app opened, drawn in the "new"
+    // blue until read. Held here for the same reason as `freshFeeds`: the lists
+    // that show them come and go, but the set must outlast them.
+    val newArticles = rememberSaveable(saver = NewArticles.Saver) { NewArticles() }
+
     // Throws away the whole back stack and shows the home screen.
     val goHome: () -> Unit = {
         if (stack.size > 1) {
@@ -240,6 +245,7 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                                 onHome = goHome,
                                 onBack = pop,
                                 freshFeeds = freshFeeds,
+                                newArticles = newArticles,
                                 onOpenFeed = {
                                     freshFeeds.clear(it.url)
                                     push(Screen.Articles(it.topic, it.name, it.url))
@@ -329,6 +335,7 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                                 onHome = goHome,
                                 onBack = pop,
                                 freshFeeds = freshFeeds,
+                                newArticles = newArticles,
                                 onOpenFeed = {
                                     freshFeeds.clear(it.url)
                                     push(Screen.Articles(screen.topic, it.name, it.url))
@@ -348,6 +355,7 @@ fun AppRoot(sharedText: String? = null, onSharedTextHandled: () -> Unit = {}) {
                                 feedUrl = screen.feedUrl,
                                 scrollMemory = scrollMemory,
                                 scrollKey = screen.encode(),
+                                newArticles = newArticles,
                                 onHome = goHome,
                                 onBack = pop,
                                 onOpenArticle = {

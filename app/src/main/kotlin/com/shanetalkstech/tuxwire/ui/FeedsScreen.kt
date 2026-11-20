@@ -53,7 +53,10 @@ import uniffi.tuxwire_ffi.FeedInfo
  * @param onHome jumps back to the home screen (topic page only).
  * @param onBack goes back one screen (topic page only).
  * @param freshFeeds the feeds that got new articles in a refresh and have not
- *   been opened yet; each is drawn with a `*`. A refresh here adds to it.
+ *   been opened yet; each is drawn with a `*` and in the "new" blue. A refresh
+ *   here adds to it.
+ * @param newArticles the articles a refresh brought in since the app opened. A
+ *   refresh here adds to it (the article lists draw them in the "new" blue).
  * @param onOpenFeed called with the tapped feed.
  * @param onOpenTopic called with a topic's name when a topic label is tapped.
  * @param onOpenOpml opens the import / export screen (home only).
@@ -75,6 +78,7 @@ fun FeedsScreen(
     onHome: () -> Unit,
     onBack: () -> Unit,
     freshFeeds: FreshFeeds,
+    newArticles: NewArticles,
     onOpenFeed: (FeedInfo) -> Unit,
     onOpenTopic: (String) -> Unit,
     onOpenOpml: () -> Unit,
@@ -256,6 +260,9 @@ fun FeedsScreen(
                                         // Mark the feeds that got something new, so
                                         // they stand out in the list below.
                                         freshFeeds.add(summary.feedsWithNew)
+                                        // And the articles themselves, so the lists can
+                                        // draw them in the "new" blue.
+                                        newArticles.add(summary.newArticleIds)
                                         version++
                                     } catch (e: CancellationException) {
                                         // Never swallow cancellation; it must propagate
@@ -309,15 +316,22 @@ fun FeedsScreen(
                                     onClick = { onOpenFeed(feed) },
                                     onLongClick = { onEditFeed(feed) },
                                 ) {
-                                    // A ` *` after the name while this feed has new
-                                    // articles that have not been opened yet. Reading
-                                    // `freshFeeds.has` here is what makes the list
-                                    // redraw when the set changes. (The row is a
+                                    // A ` *` after the name, and the "new" blue, while
+                                    // this feed has new articles that have not been
+                                    // opened yet. Opening the feed clears the mark and
+                                    // the name goes back to the unread (or read) colour.
+                                    // Reading `freshFeeds.has` here is what makes the
+                                    // list redraw when the set changes. (The row is a
                                     // column, so the marker sits in the name's own
                                     // text to stay on the same line.)
+                                    val isFresh = freshFeeds.has(feed.url)
                                     MonoText(
-                                        text = if (freshFeeds.has(feed.url)) "${feed.name} *" else feed.name,
-                                        color = if (feed.unread > 0u) colors.accentUnread else colors.accentRead,
+                                        text = if (isFresh) "${feed.name} *" else feed.name,
+                                        color = when {
+                                            isFresh -> colors.accentNew
+                                            feed.unread > 0u -> colors.accentUnread
+                                            else -> colors.accentRead
+                                        },
                                         bold = true,
                                     )
                                     MonoText("${feed.unread} unread", colors.textMuted)
