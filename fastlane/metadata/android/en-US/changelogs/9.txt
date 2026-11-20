@@ -1,0 +1,1 @@
+New: a two-pane layout for unfolded foldables and tablets. Pick a feed on the left and its articles fill the right, with an "all feeds" row for the newest from every feed. New articles and feeds now show in blue until you read or open them. Phones look the same. Your feeds, saved articles and notes are untouched.

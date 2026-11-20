@@ -110,6 +110,17 @@ sealed class Screen(val depth: Int) {
         is EditFeed -> listOf("E", feedId.toString()).joinToString(SEPARATOR)
     }
 
+    /**
+     * Whether the screen should be held to a centred column on a wide display
+     * (see [CappedWidth]). True for forms, settings and the reading page; false
+     * for the lists, which use the full width.
+     */
+    val capsWidth: Boolean
+        get() = when (this) {
+            Stats, About, Opml, Sync, is Link, is Article, is AddFeed, is EditFeed -> true
+            Home, Saved, ReadLater, is Feeds, is Articles -> false
+        }
+
     companion object {
         /**
          * A character that never appears in names or addresses, used to join the
